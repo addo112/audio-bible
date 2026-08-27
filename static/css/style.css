@@ -1,0 +1,579 @@
+/* ============================================================
+   AUDIO BIBLE AI — Mobile-First CSS
+   Designed for users who cannot read or write.
+   Everything communicates via icons, colors, and animation.
+   ============================================================ */
+
+/* ---------- CSS Variables ---------- */
+:root {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-card: #1e2a4a;
+    --text-primary: #ffffff;
+    --text-secondary: #b0b0c0;
+    --accent-gold: #D4A017;
+    --mic-size: 90px;
+    --mic-active-color: #ff4444;
+    --success-color: #4CAF50;
+    --transition-speed: 0.3s;
+}
+
+/* ---------- Reset & Base ---------- */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/* ---------- Screen Management ---------- */
+.screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    flex-direction: column;
+    transition: opacity var(--transition-speed) ease;
+}
+
+.screen.active {
+    display: flex;
+}
+
+/* ============================================================
+   SCREEN 1: LANGUAGE SELECTION
+   ============================================================ */
+.language-header {
+    text-align: center;
+    padding: 40px 20px 20px;
+    flex-shrink: 0;
+}
+
+.app-icon {
+    margin-bottom: 10px;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+.app-title {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--accent-gold);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.app-subtitle {
+    font-size: 24px;
+    letter-spacing: 8px;
+}
+
+/* Language Grid */
+.language-grid {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 24px;
+    overflow-y: auto;
+    justify-content: center;
+}
+
+/* Language Button */
+.lang-btn {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    min-height: 80px;
+    padding: 16px 20px;
+    border: 3px solid transparent;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    font-family: inherit;
+}
+
+.lang-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    opacity: 0.15;
+    border-radius: 17px;
+}
+
+.lang-btn:active {
+    transform: scale(0.96);
+}
+
+.lang-btn-icon {
+    font-size: 40px;
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+}
+
+.lang-btn-info {
+    flex: 1;
+    text-align: left;
+}
+
+.lang-btn-name {
+    font-size: 22px;
+    font-weight: 700;
+    color: white;
+    display: block;
+}
+
+.lang-btn-native {
+    font-size: 15px;
+    color: rgba(255,255,255,0.7);
+    display: block;
+    margin-top: 2px;
+}
+
+.lang-btn-arrow {
+    font-size: 24px;
+    color: rgba(255,255,255,0.5);
+    flex-shrink: 0;
+}
+
+/* Language Footer */
+.language-footer {
+    text-align: center;
+    padding: 16px;
+    flex-shrink: 0;
+}
+
+.footer-icons {
+    font-size: 24px;
+    letter-spacing: 12px;
+    opacity: 0.5;
+}
+
+/* ============================================================
+   SCREEN 2: VOICE INTERACTION
+   ============================================================ */
+
+/* Top Bar */
+.voice-topbar {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.back-btn {
+    width: 48px;
+    height: 48px;
+    border: none;
+    background: rgba(255,255,255,0.1);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.back-btn:active {
+    background: rgba(255,255,255,0.25);
+}
+
+.current-language {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.lang-flag {
+    font-size: 28px;
+}
+
+/* Status Area */
+.status-area {
+    text-align: center;
+    padding: 12px 20px;
+    flex-shrink: 0;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.status-icon {
+    font-size: 28px;
+}
+
+.status-text {
+    font-size: 16px;
+    color: var(--text-secondary);
+    max-width: 250px;
+}
+
+/* Conversation Area */
+.conversation-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-behavior: smooth;
+}
+
+.welcome-message {
+    text-align: center;
+    padding: 20px;
+    opacity: 0.6;
+    font-size: 50px;
+}
+
+/* Message Bubbles */
+.message {
+    max-width: 90%;
+    padding: 14px 18px;
+    border-radius: 18px;
+    font-size: 16px;
+    line-height: 1.5;
+    animation: fadeInUp 0.3s ease;
+    word-wrap: break-word;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-user {
+    align-self: flex-end;
+    background: rgba(255,255,255,0.15);
+    border-bottom-right-radius: 4px;
+    color: white;
+}
+
+.message-ai {
+    align-self: flex-start;
+    background: var(--bg-card);
+    border-bottom-left-radius: 4px;
+    color: #e0e0e0;
+}
+
+.message-ai .play-message-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 8px 16px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 30px;
+    background: rgba(255,255,255,0.08);
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.message-ai .play-message-btn:active {
+    background: rgba(255,255,255,0.2);
+    transform: scale(0.95);
+}
+
+.message-error {
+    align-self: center;
+    background: rgba(255,0,0,0.15);
+    border: 1px solid rgba(255,0,0,0.3);
+    color: #ff8888;
+    text-align: center;
+    font-size: 14px;
+}
+
+/* Audio Player Bar */
+.audio-player {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--bg-secondary);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+}
+
+.play-btn, .stop-btn {
+    width: 50px;
+    height: 50px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.play-btn {
+    background: var(--success-color);
+}
+
+.stop-btn {
+    background: rgba(255,255,255,0.15);
+    width: 40px;
+    height: 40px;
+}
+
+.play-btn:active, .stop-btn:active {
+    transform: scale(0.9);
+}
+
+.audio-progress {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.audio-progress-bar {
+    height: 100%;
+    background: var(--accent-gold);
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.3s linear;
+}
+
+/* ---------- Microphone Button ---------- */
+.mic-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 20px 30px;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.mic-ripple {
+    position: absolute;
+    width: var(--mic-size);
+    height: var(--mic-size);
+    border-radius: 50%;
+    top: 16px;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.mic-ripple.active {
+    animation: ripple 1.5s ease-out infinite;
+}
+
+@keyframes ripple {
+    0% {
+        transform: scale(1);
+        opacity: 0.5;
+        box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4);
+    }
+    100% {
+        transform: scale(1.8);
+        opacity: 0;
+        box-shadow: 0 0 0 30px rgba(255, 68, 68, 0);
+    }
+}
+
+.mic-btn {
+    width: var(--mic-size);
+    height: var(--mic-size);
+    border-radius: 50%;
+    border: none;
+    background: var(--accent-gold);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 4px 20px rgba(212, 160, 23, 0.4);
+}
+
+.mic-btn:active {
+    transform: scale(0.92);
+}
+
+.mic-btn.recording {
+    background: var(--mic-active-color);
+    box-shadow: 0 4px 30px rgba(255, 68, 68, 0.6);
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.mic-btn.processing {
+    background: #555;
+    pointer-events: none;
+}
+
+.mic-label {
+    margin-top: 10px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-align: center;
+    min-height: 20px;
+}
+
+/* Spinner */
+.spinner {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spinner-circle {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255,255,255,0.3);
+    border-top: 4px solid white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Offline Banner ---------- */
+.offline-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #ff4444;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* ---------- Scrollbar ---------- */
+::-webkit-scrollbar {
+    width: 4px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+}
+
+/* ---------- Responsive ---------- */
+@media (min-width: 600px) {
+    .language-grid {
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    
+    .conversation-area {
+        max-width: 600px;
+        margin: 0 auto;
+        width: 100%;
+    }
+    
+    .mic-container {
+        max-width: 600px;
+        margin: 0 auto;
+        width: 100%;
+    }
+}
+
+/* Tablet / Desktop */
+@media (min-width: 900px) {
+    :root {
+        --mic-size: 100px;
+    }
+    
+    .app-title {
+        font-size: 36px;
+    }
+    
+    .lang-btn {
+        min-height: 90px;
+    }
+    
+    .lang-btn-name {
+        font-size: 26px;
+    }
+    
+    .message {
+        font-size: 18px;
+        max-width: 70%;
+    }
+}
+
+/* ---------- Safe Areas (notch phones) ---------- */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .language-header {
+        padding-top: calc(40px + env(safe-area-inset-top));
+    }
+    
+    .voice-topbar {
+        padding-top: calc(12px + env(safe-area-inset-top));
+    }
+    
+    .mic-container {
+        padding-bottom: calc(30px + env(safe-area-inset-bottom));
+    }
+}

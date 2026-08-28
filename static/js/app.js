@@ -534,20 +534,15 @@ function stopCurrentAudio() {
 }
 
 /**
- * Browser-based TTS fallback when server-side TTS is not available.
- * Strips markdown symbols and speaks with natural pacing for local languages.
+ * Prepare and smooth text for realistic, humanized pronunciation by speech engines.
+ * Converts special orthography (ɛ, ɔ, etc.) to clean phonetic equivalents
+ * and inserts natural rhythm pauses for authentic Ghanaian cadence.
  */
-function speakWithBrowserTTS(text) {
-    if (!('speechSynthesis' in window)) return;
-    
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
-    
-    // Clean text for speech: remove markdown syntax (##, **, __, >, etc.)
-    const cleanSpeechText = text
-        .replace(/###/g, '')
-        .replace(/##/g, '')
-        .replace(/#/g, '')
+function prepareTextForSpeech(text, langCode) {
+    let clean = text
+        .replace(/###\s+/g, '')
+        .replace(/##\s+/g, '')
+        .replace(/#\s+/g, '')
         .replace(/\*\*/g, '')
         .replace(/\*/g, '')
         .replace(/__|_/g, '')
@@ -555,19 +550,56 @@ function speakWithBrowserTTS(text) {
         .replace(/\[.*?\]/g, '')
         .replace(/---/g, '')
         .trim();
+        
+    if (langCode === 'tw' || langCode === 'fat') {
+        // Phonetic smoothing for natural Akan pronunciation on standard synthesizers
+        clean = clean
+            .replace(/ɛ/g, 'e')
+            .replace(/Ɛ/g, 'E')
+            .replace(/ɔ/g, 'o')
+            .replace(/Ɔ/g, 'O')
+            .replace(/\bOnyankopɔn\b/gi, 'O-nyankopon')
+            .replace(/\bNyankopɔn\b/gi, 'Nyankopon')
+            .replace(/\bTwerɛ\b/gi, 'Twere')
+            .replace(/\bMpaebɔ\b/gi, 'Mpaebo')
+            .replace(/\bMmpaeɛ\b/gi, 'Mpaee')
+            .replace(/\bAsomdwoeɛ\b/gi, 'Asomdwee')
+            .replace(/\bNhyira\b/gi, 'N-hyira')
+            .replace(/\bYehowa\b/gi, 'Yehowa')
+            .replace(/\bYohane\b/gi, 'Yohane')
+            .replace(/\bYesu\b/gi, 'Yesu');
+    }
+    return clean;
+}
+
+/**
+ * Browser-based TTS with Ghanaian/West African voice prioritization,
+ * sentence chunking, and natural breathing pauses.
+ */
+function speakWithBrowserTTS(text) {
+    if (!('speechSynthesis' in window)) return;
     
-    // Split into natural spoken paragraphs/sentences so browser voice pauses naturally
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    const langCode = state.currentLanguage ? state.currentLanguage.code : 'tw';
+    const cleanSpeechText = prepareTextForSpeech(text, langCode);
+    
+    // Split into short, natural spoken clauses so speech sounds rhythmic and conversational
     const chunks = cleanSpeechText
-        .split(/(?<=[.!?\n])\s+/)
-        .filter(c => c.trim().length > 0);
+        .split(/(?<=[.!?:;\n])\s+/)
+        .map(c => c.trim())
+        .filter(c => c.length > 0);
     
     const voices = window.speechSynthesis.getVoices();
+    
+    // Prioritize Ghanaian (en-GH), West African (en-NG), and natural African English voices
     const langMap = {
-        'tw': ['ak', 'tw', 'en-GH', 'en-NG', 'en-GB'],
-        'fat': ['ak', 'tw', 'en-GH', 'en-NG', 'en-GB'],
-        'ee': ['ee', 'en-GH', 'en-NG', 'en-GB'],
-        'gaa': ['en-GH', 'en-NG', 'en-GB'],
-        'ha': ['ha', 'ha-NE', 'ha-NG', 'en-NG'],
+        'tw': ['en-GH', 'en-NG', 'ak', 'tw', 'en-ZA', 'en-GB'],
+        'fat': ['en-GH', 'en-NG', 'ak', 'tw', 'en-ZA', 'en-GB'],
+        'ee': ['en-GH', 'en-NG', 'ee', 'en-ZA', 'en-GB'],
+        'gaa': ['en-GH', 'en-NG', 'en-ZA', 'en-GB'],
+        'ha': ['ha', 'ha-NG', 'ha-NE', 'en-NG', 'en-GH'],
     };
     
     let matchedVoice = null;
@@ -575,7 +607,7 @@ function speakWithBrowserTTS(text) {
     if (state.currentLanguage) {
         const preferredLangs = langMap[state.currentLanguage.code] || ['en-GH', 'en'];
         for (const lang of preferredLangs) {
-            const voice = voices.find(v => v.lang.toLowerCase().startsWith(lang.toLowerCase()));
+            const voice = voices.find(v => v.lang.toLowerCase().replace('_', '-').startsWith(lang.toLowerCase()));
             if (voice) {
                 matchedVoice = voice;
                 matchedLang = voice.lang;
@@ -584,14 +616,14 @@ function speakWithBrowserTTS(text) {
         }
     }
     
-    chunks.forEach((chunk, index) => {
-        const utterance = new SpeechSynthesisUtterance(chunk.trim());
+    chunks.forEach((chunk) => {
+        const utterance = new SpeechSynthesisUtterance(chunk);
         if (matchedVoice) {
             utterance.voice = matchedVoice;
             utterance.lang = matchedLang;
         }
-        utterance.rate = 0.84; // Calm, clear, dignified pace for humanized Akan reading
-        utterance.pitch = 1.0;
+        utterance.rate = 0.82; // Natural, clear, relaxed cadence for clear listening
+        utterance.pitch = 0.98; // Warm, grounded pitch
         window.speechSynthesis.speak(utterance);
     });
 }

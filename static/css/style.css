@@ -328,6 +328,21 @@ html, body {
     font-size: 14px;
 }
 
+.msg-header {
+    color: var(--accent-gold);
+    font-size: 18px;
+    font-weight: 700;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.msg-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    margin: 12px 0;
+}
+
 /* Audio Player Bar */
 .audio-player {
     display: flex;

@@ -535,6 +535,7 @@ function stopCurrentAudio() {
 
 /**
  * Browser-based TTS fallback when server-side TTS is not available.
+ * Strips markdown symbols and speaks with natural pacing for local languages.
  */
 function speakWithBrowserTTS(text) {
     if (!('speechSynthesis' in window)) return;
@@ -542,34 +543,57 @@ function speakWithBrowserTTS(text) {
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
     
-    const utterance = new SpeechSynthesisUtterance(text);
+    // Clean text for speech: remove markdown syntax (##, **, __, >, etc.)
+    const cleanSpeechText = text
+        .replace(/###/g, '')
+        .replace(/##/g, '')
+        .replace(/#/g, '')
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '')
+        .replace(/__|_/g, '')
+        .replace(/>/g, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/---/g, '')
+        .trim();
     
-    // Try to find a matching voice
+    // Split into natural spoken paragraphs/sentences so browser voice pauses naturally
+    const chunks = cleanSpeechText
+        .split(/(?<=[.!?\n])\s+/)
+        .filter(c => c.trim().length > 0);
+    
     const voices = window.speechSynthesis.getVoices();
     const langMap = {
-        'tw': ['ak', 'tw', 'en-GH'],
-        'fat': ['ak', 'tw', 'en-GH'],
-        'ee': ['ee', 'en-GH'],
-        'gaa': ['en-GH'],
-        'ha': ['ha', 'en-NG'],
+        'tw': ['ak', 'tw', 'en-GH', 'en-NG', 'en-GB'],
+        'fat': ['ak', 'tw', 'en-GH', 'en-NG', 'en-GB'],
+        'ee': ['ee', 'en-GH', 'en-NG', 'en-GB'],
+        'gaa': ['en-GH', 'en-NG', 'en-GB'],
+        'ha': ['ha', 'ha-NE', 'ha-NG', 'en-NG'],
     };
     
+    let matchedVoice = null;
+    let matchedLang = 'en-GH';
     if (state.currentLanguage) {
-        const preferredLangs = langMap[state.currentLanguage.code] || ['en'];
+        const preferredLangs = langMap[state.currentLanguage.code] || ['en-GH', 'en'];
         for (const lang of preferredLangs) {
-            const voice = voices.find(v => v.lang.startsWith(lang));
+            const voice = voices.find(v => v.lang.toLowerCase().startsWith(lang.toLowerCase()));
             if (voice) {
-                utterance.voice = voice;
-                utterance.lang = voice.lang;
+                matchedVoice = voice;
+                matchedLang = voice.lang;
                 break;
             }
         }
     }
     
-    utterance.rate = 0.85; // Slightly slower for clarity
-    utterance.pitch = 1.0;
-    
-    window.speechSynthesis.speak(utterance);
+    chunks.forEach((chunk, index) => {
+        const utterance = new SpeechSynthesisUtterance(chunk.trim());
+        if (matchedVoice) {
+            utterance.voice = matchedVoice;
+            utterance.lang = matchedLang;
+        }
+        utterance.rate = 0.84; // Calm, clear, dignified pace for humanized Akan reading
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+    });
 }
 
 // ============================================================
@@ -597,7 +621,14 @@ function addMessage(type, content, audioData = null) {
             <button class="play-message-btn" onclick="replayMessage(this)" 
                     data-audio="${audioData.audio}" 
                     data-mime="${audioData.audio_mime}">
-                🔊 ▶
+                🔊 Tie bio (Replay)
+            </button>
+        `;
+    } else if (type === 'ai') {
+        messageDiv.innerHTML = `
+            <div class="message-text">${formatMessageText(content)}</div>
+            <button class="play-message-btn" onclick="speakWithBrowserTTS(decodeURIComponent('${encodeURIComponent(content)}'))">
+                🔊 Tie bio (Replay)
             </button>
         `;
     } else {
@@ -611,14 +642,18 @@ function addMessage(type, content, audioData = null) {
 }
 
 function formatMessageText(text) {
-    // Basic formatting: convert line breaks, bold Bible references
+    // Convert Markdown headers, blockquotes, bold, and line breaks
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
+        .replace(/###\s+(.*?)(\n|$)/g, '<h3 class="msg-header">$1</h3>')
+        .replace(/##\s+(.*?)(\n|$)/g, '<h2 class="msg-header">$1</h2>')
+        .replace(/#\s+(.*?)(\n|$)/g, '<h1 class="msg-header">$1</h1>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/\n/g, '<br>')
-        // Bold Bible references like "Genesis 1:1" or "John 3:16"
-        .replace(/\b(\d?\s?[A-Z][a-z]+\s+\d+:\d+(?:-\d+)?)\b/g, '<strong>$1</strong>');
+        .replace(/---/g, '<hr class="msg-divider">');
 }
 
 function replayMessage(button) {

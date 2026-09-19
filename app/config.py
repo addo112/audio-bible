@@ -19,8 +19,14 @@ class Settings(BaseSettings):
     # Khaya API base URL (Azure API Management)
     KHAYA_BASE_URL: str = "https://translation.ghananlp.org"
     
-    # Gemini model to use
+    # Gemini model to use for Bible teaching
     GEMINI_MODEL: str = "gemini-3.6-flash"
+    
+    # Gemini TTS model for native voice generation
+    GEMINI_TTS_MODEL: str = "gemini-3.1-flash-tts-preview"
+    
+    # Default TTS voice name (Gemini prebuilt voice — Charon is deep and resonant like the Audio Bible narrator)
+    GEMINI_TTS_VOICE: str = "Charon"
     
     class Config:
         env_file = ".env"
@@ -41,10 +47,16 @@ LANGUAGES = {
         "khaya_asr_code": "tw",
         "translate_pair": "en-tw",
         "greeting_audio": "Ɛte sɛn! Mo abra o!",
+        "tts_voice_prompt": (
+            "You are the official Asante Twi Audio Bible narrator from Ghana (Faith Comes By Hearing / Bible Society of Ghana style). "
+            "Speak in authentic, fluent, idiomatic Asante Twi with a deep, warm, resonant, and natural Ghanaian tone. "
+            "Pronounce every Asante word with authentic Akan tonal cadences and rhythmic pauses. "
+            "Deliver both the Scripture reading and the pastoral teaching with clear, soothing, lifelike clarity: "
+        ),
         "sample_questions": [
-            "Kenkan Genesis chapta 1 ma me",
-            "Kyerɛ me Awurade mpaebɔ no",
-            "Dɛn na Bible ka fa ɔdɔ ho?"
+            "Kenkan Genesis Ti Baako ma me",
+            "Kyerɛ me Awurade mpaebɔ no (Mateu 6:9-13)",
+            "Dɛn na Twerɛ Kronkron ka fa ɔdɔ ho?"
         ]
     },
     "fat": {
@@ -59,6 +71,11 @@ LANGUAGES = {
         "khaya_asr_code": "fat",
         "translate_pair": "en-fat",
         "greeting_audio": "Maakye! Mo abra!",
+        "tts_voice_prompt": (
+            "Read the following Mfantse (Fante) text aloud in a warm, gentle, pastoral Ghanaian tone. "
+            "Speak naturally like a loving Cape Coast elder or pastor. "
+            "Use authentic Fante pronunciation and intonation. Speak clearly at a calm pace: "
+        ),
         "sample_questions": [
             "Kenkan Genesis chapta 1 ma me",
             "Kyerɛ me Psalm 23",
@@ -77,6 +94,11 @@ LANGUAGES = {
         "khaya_asr_code": "ee",
         "translate_pair": "en-ee",
         "greeting_audio": "Ŋdi! Woezo!",
+        "tts_voice_prompt": (
+            "Read the following Ewe (Eʋegbe) text aloud in a warm, kind, pastoral tone. "
+            "Speak naturally like a loving Volta Region elder or pastor. "
+            "Use authentic Ewe pronunciation with proper tonal patterns. Speak clearly and gently: "
+        ),
         "sample_questions": [
             "Xlẽ Genesis chapita 1 nam",
             "Fia Psalm 23 nye",
@@ -95,6 +117,11 @@ LANGUAGES = {
         "khaya_asr_code": "gaa",
         "translate_pair": "en-gaa",
         "greeting_audio": "Ojeogbɛnɔ! Miiyɛ gbɛ!",
+        "tts_voice_prompt": (
+            "Read the following Ga (Gã) text aloud in a warm, fatherly, pastoral tone. "
+            "Speak naturally like a wise Accra elder or pastor. "
+            "Use authentic Ga pronunciation and rhythm. Speak clearly and with compassion: "
+        ),
         "sample_questions": [
             "Kɛ Genesis chapter 1 ni mɛi",
             "Fa Psalm 23 shiɛ mɛi",
@@ -113,6 +140,11 @@ LANGUAGES = {
         "khaya_asr_code": "ha",
         "translate_pair": "en-ha",
         "greeting_audio": "Sannu! Barka da zuwa!",
+        "tts_voice_prompt": (
+            "Read the following Hausa text aloud in a warm, respectful, pastoral tone. "
+            "Speak naturally like a wise Mallam or pastor in Northern Ghana or Nigeria. "
+            "Use authentic Hausa pronunciation and cadence. Speak clearly at a calm, steady pace: "
+        ),
         "sample_questions": [
             "Ka karanta mini Farawa sura ta 1",
             "Bayyana mini Zabura 23",

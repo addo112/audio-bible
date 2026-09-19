@@ -2,15 +2,17 @@
 Text-to-Speech Service — Converts AI responses to audio.
 
 Fallback chain:
-1. Khaya AI TTS (best quality for Ghanaian languages, 100 free calls/month)
-2. gTTS (Google Translate TTS, free, supports Hausa)
-3. Returns None → frontend uses browser SpeechSynthesis as last resort
+1. Gemini TTS (best quality — native Ghanaian accent & tone, free with API key)
+2. Khaya AI TTS (high quality for Ghanaian languages, 100 free calls/month)
+3. gTTS (Google Translate TTS, free, supports Hausa)
+4. Returns None → frontend uses browser SpeechSynthesis as last resort
 """
 import httpx
 from gtts import gTTS
 import io
 import logging
 from app.config import get_settings, LANGUAGES
+from app.services.gemini_tts import gemini_tts
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,16 @@ class TTSService:
         if not lang:
             return None, None
         
-        # Strategy 1: Khaya AI TTS (best quality for Ghanaian languages)
+        # Strategy 1: Gemini TTS (native Ghanaian accent — best quality, free)
+        try:
+            audio, mime = await gemini_tts.synthesize(text, language_code)
+            if audio:
+                logger.info(f"TTS via Gemini for {language_code} ({len(audio)} bytes)")
+                return audio, mime
+        except Exception as e:
+            logger.warning(f"Gemini TTS failed for {language_code}: {e}")
+        
+        # Strategy 2: Khaya AI TTS (high quality for Ghanaian languages)
         if settings.KHAYA_API_KEY:
             try:
                 audio = await self._khaya_tts(text, language_code, settings)
@@ -43,7 +54,7 @@ class TTSService:
             except Exception as e:
                 logger.warning(f"Khaya TTS failed for {language_code}: {e}")
         
-        # Strategy 2: gTTS (free, works for Hausa and potentially others)
+        # Strategy 3: gTTS (free, works for Hausa and potentially others)
         if lang.get("gtts_code"):
             try:
                 audio = self._gtts(text, lang["gtts_code"])
@@ -53,7 +64,7 @@ class TTSService:
             except Exception as e:
                 logger.warning(f"gTTS failed for {language_code}: {e}")
         
-        # Strategy 3: Try gTTS with related language codes as fallback
+        # Strategy 4: Try gTTS with related language codes as fallback
         fallback_codes = {
             "tw": ["ak"],      # Akan
             "fat": ["ak"],     # Akan (Fante is a dialect)

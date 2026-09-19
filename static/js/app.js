@@ -295,7 +295,7 @@ async function startRecording() {
         dom.btnMic.classList.add('recording');
         dom.micRipple.classList.add('active');
         dom.micRipple.style.background = state.currentLanguage.color;
-        setStatus('🔴', '');
+        setStatus('🔴', state.currentLanguage.code === 'tw' ? 'Meredie wo asɛm...' : 'Listening...');
         
         // Audio feedback
         playStartBeep();
@@ -377,10 +377,10 @@ async function processAudio(audioBlob, mimeType) {
     dom.btnMic.classList.add('processing');
     dom.micIcon.style.display = 'none';
     dom.micSpinner.style.display = 'flex';
-    setStatus('⏳', '');
+    setStatus('⏳', state.currentLanguage && state.currentLanguage.code === 'tw' ? 'Onyankopɔn Asɛm resiesie...' : 'Processing...');
     
     // Add user message indicator
-    addMessage('user', '🎤 ...');
+    addMessage('user', state.currentLanguage && state.currentLanguage.code === 'tw' ? '🎤 Wo nne regye aso...' : '🎤 ...');
     
     try {
         // Prepare form data
@@ -426,7 +426,7 @@ async function processAudio(audioBlob, mimeType) {
         
         // Success feedback
         playSuccessChime();
-        setStatus('📖', '');
+        setStatus('📖', state.currentLanguage && state.currentLanguage.code === 'tw' ? 'Asante Twi Audio Bible' : '');
         
     } catch (err) {
         console.error('Processing error:', err);

@@ -3,8 +3,6 @@ Gemini TTS Service — Native voice generation using Gemini's built-in TTS.
 
 Generates spoken audio directly from Gemini in Ghanaian languages
 with authentic native tone, accent, and pastoral warmth.
-
-No extra API keys needed — uses the same Gemini API key as the Bible AI.
 """
 from google import genai
 from google.genai import types
@@ -16,7 +14,7 @@ from app.config import get_settings, LANGUAGES
 
 logger = logging.getLogger(__name__)
 
-# Maximum text length per TTS request (keeps audio response under 2-3 seconds)
+# Maximum text length per TTS request
 MAX_TTS_TEXT_LENGTH = 500
 
 
@@ -30,37 +28,26 @@ class GeminiTTS:
         self.default_voice = settings.GEMINI_TTS_VOICE
     
     def _clean_text_for_speech(self, text: str) -> str:
-        """
-        Remove Markdown formatting and clean text for natural speech.
-        Keeps the actual words but strips formatting artifacts.
-        """
+        """Remove Markdown formatting for natural speech."""
         clean = text
-        # Remove markdown headers (### , ## , # )
         clean = re.sub(r'#{1,6}\s+', '', clean)
-        # Remove bold/italic markers
         clean = re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', clean)
         clean = re.sub(r'_{1,3}(.*?)_{1,3}', r'\1', clean)
-        # Remove blockquote markers
         clean = re.sub(r'^>\s*', '', clean, flags=re.MULTILINE)
-        # Remove horizontal rules
         clean = re.sub(r'^---+$', '', clean, flags=re.MULTILINE)
-        # Remove bracket content like [Note]
         clean = re.sub(r'\[.*?\]', '', clean)
-        # Collapse multiple newlines into pauses
+        # Remove emoji
+        clean = re.sub(r'[🌟📖💡🙏✝️🔊🎤🇬🇭🇳🇬]', '', clean)
         clean = re.sub(r'\n{3,}', '\n\n', clean)
         return clean.strip()
     
-    def _truncate_for_tts(self, text: str) -> str:
-        """
-        Truncate text to fit TTS limits while keeping it coherent.
-        Cuts at the last sentence boundary within the limit.
-        """
-        if len(text) <= MAX_TTS_TEXT_LENGTH:
+    def _truncate_for_tts(self, text: str, max_length: int = None) -> str:
+        """Truncate text at sentence boundary within limit."""
+        limit = max_length or MAX_TTS_TEXT_LENGTH
+        if len(text) <= limit:
             return text
         
-        # Find the last sentence-ending punctuation within the limit
-        truncated = text[:MAX_TTS_TEXT_LENGTH]
-        # Look for last sentence boundary (., !, ?, or newline)
+        truncated = text[:limit]
         last_break = max(
             truncated.rfind('. '),
             truncated.rfind('! '),
@@ -70,69 +57,73 @@ class GeminiTTS:
             truncated.rfind('?\n'),
         )
         
-        if last_break > MAX_TTS_TEXT_LENGTH // 2:
+        if last_break > limit // 2:
             return truncated[:last_break + 1]
         return truncated
     
     async def synthesize(self, text: str, language_code: str) -> tuple[bytes | None, str | None]:
-        """
-        Convert text to native-sounding speech using Gemini TTS.
-        
-        Returns: (wav_audio_bytes, mime_type) or (None, None) on failure.
-        """
+        """Convert text to speech using Gemini TTS with retry on failure."""
         lang = LANGUAGES.get(language_code)
         if not lang:
             return None, None
         
-        # Clean and prepare text for speech
         clean_text = self._clean_text_for_speech(text)
         clean_text = self._truncate_for_tts(clean_text)
         
         if not clean_text or len(clean_text) < 10:
             return None, None
         
-        # Build the TTS prompt with language-specific voice instructions
-        voice_prompt = lang.get("tts_voice_prompt", "Read the following text aloud clearly: ")
+        voice_prompt = lang.get("tts_voice_prompt", "Read aloud clearly: ")
         tts_content = f"{voice_prompt}\n\n{clean_text}"
         
-        try:
-            response = self.client.models.generate_content(
-                model=self.tts_model,
-                contents=tts_content,
-                config=types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=types.SpeechConfig(
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=self.default_voice,
-                            )
-                        )
-                    ),
-                ),
-            )
-            
-            # Extract audio data from response
-            if (response.candidates 
-                    and response.candidates[0].content 
-                    and response.candidates[0].content.parts):
+        # Try full text first, then shorter on failure
+        for attempt in range(2):
+            try:
+                if attempt == 1:
+                    # Retry with shorter text
+                    clean_text = self._truncate_for_tts(clean_text, max_length=400)
+                    tts_content = f"{voice_prompt}\n\n{clean_text}"
+                    logger.info("Retrying TTS with shorter text...")
                 
-                for part in response.candidates[0].content.parts:
-                    if part.inline_data and part.inline_data.data:
-                        pcm_data = part.inline_data.data
-                        # Convert raw PCM to WAV for browser playback
-                        wav_data = self._pcm_to_wav(pcm_data)
-                        logger.info(
-                            f"Gemini TTS: generated {len(wav_data)} bytes "
-                            f"for {language_code} ({lang['name']})"
-                        )
-                        return wav_data, "audio/wav"
-            
-            logger.warning("Gemini TTS: no audio data in response")
-            return None, None
-            
-        except Exception as e:
-            logger.error(f"Gemini TTS error for {language_code}: {e}")
-            return None, None
+                response = self.client.models.generate_content(
+                    model=self.tts_model,
+                    contents=tts_content,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["AUDIO"],
+                        speech_config=types.SpeechConfig(
+                            voice_config=types.VoiceConfig(
+                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                    voice_name=self.default_voice,
+                                )
+                            )
+                        ),
+                    ),
+                )
+                
+                if (response.candidates 
+                        and response.candidates[0].content 
+                        and response.candidates[0].content.parts):
+                    
+                    for part in response.candidates[0].content.parts:
+                        if part.inline_data and part.inline_data.data:
+                            pcm_data = part.inline_data.data
+                            wav_data = self._pcm_to_wav(pcm_data)
+                            logger.info(
+                                f"Gemini TTS: {len(wav_data)} bytes "
+                                f"for {language_code} (attempt {attempt+1})"
+                            )
+                            return wav_data, "audio/wav"
+                
+                logger.warning(f"Gemini TTS: no audio in response (attempt {attempt+1})")
+                
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    logger.warning(f"Gemini TTS rate limited (attempt {attempt+1}): {e}")
+                    break  # Don't retry on rate limit
+                logger.error(f"Gemini TTS error (attempt {attempt+1}): {e}")
+        
+        return None, None
     
     @staticmethod
     def _pcm_to_wav(
@@ -141,12 +132,7 @@ class GeminiTTS:
         channels: int = 1,
         sample_width: int = 2,
     ) -> bytes:
-        """
-        Wrap raw PCM audio data in a WAV header for browser playback.
-        
-        Gemini TTS outputs raw PCM: 16-bit, 24kHz, mono, little-endian.
-        Browsers need a proper WAV file header to play it.
-        """
+        """Wrap raw PCM audio data in a WAV header."""
         buffer = io.BytesIO()
         with wave.open(buffer, 'wb') as wf:
             wf.setnchannels(channels)

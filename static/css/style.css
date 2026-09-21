@@ -343,6 +343,60 @@ html, body {
     margin: 12px 0;
 }
 
+/* Typing Indicator */
+.typing-indicator {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px !important;
+    min-height: auto;
+}
+
+.typing-dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.typing-dots .dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent-gold);
+    border-radius: 50%;
+    animation: typingBounce 1.4s ease-in-out infinite;
+}
+
+.typing-dots .dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dots .dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-8px); opacity: 1; }
+}
+
+.typing-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Audio loading state on message buttons */
+.play-message-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+    border-style: dashed;
+}
+
+.play-message-btn:disabled:active {
+    transform: none;
+    background: rgba(255,255,255,0.08);
+}
+
 /* Audio Player Bar */
 .audio-player {
     display: flex;

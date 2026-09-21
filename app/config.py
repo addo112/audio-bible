@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     KHAYA_BASE_URL: str = "https://translation.ghananlp.org"
     
     # Gemini model to use for Bible teaching
-    GEMINI_MODEL: str = "gemini-3.6-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"  # CHANGED from gemini-3.6-flash
     
     # Gemini TTS model for native voice generation
     GEMINI_TTS_MODEL: str = "gemini-3.1-flash-tts-preview"

@@ -20,9 +20,9 @@ logging.basicConfig(
 
 # Create FastAPI app
 app = FastAPI(
-    title="Audio Bible AI",
-    description="Voice-first AI Bible teaching assistant for Ghanaian languages",
-    version="1.0.0",
+    title="Asante Twi Audio Bible",
+    description="Voice-first AI Bible teaching assistant in Asante Twi",
+    version="2.1.0",
 )
 
 # CORS — allow all origins for mobile access

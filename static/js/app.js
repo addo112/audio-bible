@@ -1,15 +1,22 @@
 /**
- * Audio Bible AI — Frontend Application v2.0
+ * Audio Bible AI — Asante Twi Audio Bible
  * 
- * Voice-first interface for Bible teaching in Ghanaian languages.
- * Two-phase architecture: text appears instantly, audio loads in background.
+ * Voice-first interface for Bible teaching in Asante Twi.
+ * Auto-launches directly into voice interaction — no language selection needed.
  */
 
 // ============================================================
 // STATE
 // ============================================================
 const state = {
-    currentLanguage: null,
+    currentLanguage: {
+        code: 'tw',
+        name: 'Asante Twi',
+        native_name: 'Asante Twi',
+        color: '#D4A017',
+        color_light: '#FFF3D0',
+        icon: '🇬🇭',
+    },
     sessionId: null,
     isRecording: false,
     isProcessing: false,
@@ -25,7 +32,6 @@ const state = {
 const dom = {
     screenLanguage: document.getElementById('screen-language'),
     screenVoice: document.getElementById('screen-voice'),
-    languageGrid: document.getElementById('language-grid'),
     voiceTopbar: document.getElementById('voice-topbar'),
     btnBack: document.getElementById('btn-back'),
     langFlag: document.getElementById('lang-flag'),
@@ -50,23 +56,12 @@ const dom = {
     offlineBanner: document.getElementById('offline-banner'),
 };
 
-// ============================================================
-// LANGUAGE DATA
-// ============================================================
-const LANGUAGES = [
-    { code: 'tw', name: 'Asante Twi', native_name: 'Asante Twi', color: '#D4A017', color_light: '#FFF3D0', icon: '🇬🇭', symbol: '🟡' },
-    { code: 'fat', name: 'Fante', native_name: 'Mfantse', color: '#006B3F', color_light: '#D0F5E0', icon: '🇬🇭', symbol: '🟢' },
-    { code: 'ee', name: 'Ewe', native_name: 'Eʋegbe', color: '#CE1126', color_light: '#FFD6DC', icon: '🇬🇭', symbol: '🔴' },
-    { code: 'gaa', name: 'GA', native_name: 'Gã', color: '#003F87', color_light: '#D0E3FF', icon: '🇬🇭', symbol: '🔵' },
-    { code: 'ha', name: 'Hausa', native_name: 'Hausa', color: '#FF8C00', color_light: '#FFF0D0', icon: '🇳🇬', symbol: '🟠' },
-];
-
-// Status messages in Twi
-const TWI_STATUS = {
+// Twi status messages
+const STATUS = {
     listening: 'Meredie wo asɛm...',
     thinking: '✨ Onyame Asɛm resiesie...',
     audio_loading: '🔊 Audio reba...',
-    ready: 'Asante Twi Audio Bible',
+    ready: 'Kasa kyerɛ Onyame Asɛm Ɔkyerɛkyerɛfoɔ no',
     error: 'Kafra, bɔ mmɔden bio',
 };
 
@@ -96,64 +91,35 @@ function playSuccessChime() { playBeep(523, 100); setTimeout(() => playBeep(659,
 function playErrorSound() { playBeep(300, 200, 'square'); }
 
 // ============================================================
-// INITIALIZE
+// INITIALIZE — Auto-launch into Twi voice screen
 // ============================================================
 function init() {
-    renderLanguageGrid();
     setupEventListeners();
     checkOnlineStatus();
+
+    // Auto-select Asante Twi and go straight to voice screen
+    const lang = state.currentLanguage;
+    dom.voiceTopbar.style.background = lang.color;
+    dom.langFlag.textContent = lang.icon;
+    dom.langName.textContent = 'Asante Twi Audio Bible';
+    dom.btnMic.style.background = lang.color;
+    dom.btnMic.style.boxShadow = `0 4px 20px ${lang.color}66`;
+    dom.welcomeMessage.innerHTML = `
+        <div style="font-size: 50px; margin-bottom: 12px;">📖✝️</div>
+        <div style="font-size: 16px; color: var(--text-secondary); margin-top: 8px;">
+            Kasa kyerɛ Onyame Asɛm Ɔkyerɛkyerɛfoɔ no
+        </div>
+    `;
+    setStatus('🎤', STATUS.ready);
+
+    // Go directly to voice screen — skip language selection
+    dom.screenLanguage.classList.remove('active');
+    dom.screenVoice.classList.add('active');
+
+    // Register service worker
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/static/sw.js').catch(() => {});
     }
-}
-
-// ============================================================
-// LANGUAGE SELECTION
-// ============================================================
-function renderLanguageGrid() {
-    dom.languageGrid.innerHTML = '';
-    LANGUAGES.forEach((lang) => {
-        const btn = document.createElement('button');
-        btn.className = 'lang-btn';
-        btn.style.background = lang.color;
-        btn.style.borderColor = lang.color;
-        btn.innerHTML = `
-            <div class="lang-btn-icon">${lang.icon}</div>
-            <div class="lang-btn-info">
-                <span class="lang-btn-name">${lang.name}</span>
-                <span class="lang-btn-native">${lang.native_name}</span>
-            </div>
-            <div class="lang-btn-arrow">▶</div>
-        `;
-        btn.addEventListener('click', () => selectLanguage(lang));
-        dom.languageGrid.appendChild(btn);
-    });
-}
-
-function selectLanguage(lang) {
-    state.currentLanguage = lang;
-    state.sessionId = null;
-    dom.voiceTopbar.style.background = lang.color;
-    dom.langFlag.textContent = lang.icon;
-    dom.langName.textContent = lang.name;
-    dom.btnMic.style.background = lang.color;
-    dom.btnMic.style.boxShadow = `0 4px 20px ${lang.color}66`;
-    dom.welcomeMessage.innerHTML = `<div style="font-size: 50px; margin-bottom: 12px;">📖✝️</div>`;
-    dom.messages.innerHTML = '';
-    dom.audioPlayer.style.display = 'none';
-    setStatus('🎤', '');
-    showScreen('voice');
-    playBeep(700, 100);
-}
-
-// ============================================================
-// SCREEN NAVIGATION
-// ============================================================
-function showScreen(screenName) {
-    dom.screenLanguage.classList.remove('active');
-    dom.screenVoice.classList.remove('active');
-    if (screenName === 'language') dom.screenLanguage.classList.add('active');
-    else if (screenName === 'voice') dom.screenVoice.classList.add('active');
 }
 
 // ============================================================
@@ -181,14 +147,14 @@ async function startRecording() {
         dom.btnMic.classList.add('recording');
         dom.micRipple.classList.add('active');
         dom.micRipple.style.background = state.currentLanguage.color;
-        setStatus('🔴', isTwi() ? TWI_STATUS.listening : 'Listening...');
+        setStatus('🔴', STATUS.listening);
         playStartBeep();
         setTimeout(() => { if (state.isRecording) stopRecording(); }, 60000);
     } catch (err) {
         console.error('Microphone error:', err);
         playErrorSound();
         setStatus('🎤❌', '');
-        addMessage('error', '🎤 ❌ — Please allow microphone access');
+        addMessage('error', '🎤 ❌ — Ma me kwan na menye wo nne (Allow microphone)');
     }
 }
 
@@ -221,10 +187,6 @@ function toggleRecording() {
     else startRecording();
 }
 
-function isTwi() {
-    return state.currentLanguage && state.currentLanguage.code === 'tw';
-}
-
 // ============================================================
 // TWO-PHASE API COMMUNICATION
 // ============================================================
@@ -237,58 +199,46 @@ async function processAudio(audioBlob, mimeType) {
     if (state.isProcessing) return;
     state.isProcessing = true;
 
-    // Show processing UI
     dom.btnMic.classList.add('processing');
     dom.micIcon.style.display = 'none';
     dom.micSpinner.style.display = 'flex';
-    setStatus('⏳', isTwi() ? TWI_STATUS.thinking : 'Processing...');
+    setStatus('⏳', STATUS.thinking);
 
-    // Add user message
-    addMessage('user', isTwi() ? '🎤 Wo nne regye aso...' : '🎤 ...');
-
-    // Show typing indicator
+    addMessage('user', '🎤 Wo nne regye aso...');
     const typingId = showTypingIndicator();
 
     try {
-        // Prepare form data
         const formData = new FormData();
         let extension = 'webm';
         if (mimeType.includes('ogg')) extension = 'ogg';
         else if (mimeType.includes('mp4')) extension = 'mp4';
         else if (mimeType.includes('wav')) extension = 'wav';
         formData.append('audio', audioBlob, `recording.${extension}`);
-        formData.append('language', state.currentLanguage.code);
+        formData.append('language', 'tw');
         if (state.sessionId) formData.append('session_id', state.sessionId);
 
-        // PHASE 1: Get text response (fast — no TTS wait!)
-        const response = await fetch('/api/process-voice', {
-            method: 'POST',
-            body: formData,
-        });
-
+        // PHASE 1: Get text response (fast!)
+        const response = await fetch('/api/process-voice', { method: 'POST', body: formData });
         if (!response.ok) throw new Error(`Server error: ${response.status}`);
         const data = await response.json();
 
-        // Remove typing indicator
         removeTypingIndicator(typingId);
-
-        // Update session
         state.sessionId = data.session_id;
 
-        // Show text immediately — user sees response NOW
+        // Show text immediately
         const msgElement = addMessage('ai', data.text);
         playSuccessChime();
-        setStatus('📖', isTwi() ? TWI_STATUS.ready : '');
+        setStatus('📖', STATUS.ready);
 
-        // PHASE 2: Fetch audio in background (non-blocking!)
-        fetchAndPlayAudio(data.text, data.language, msgElement);
+        // PHASE 2: Fetch audio in background
+        fetchAndPlayAudio(data.text, 'tw', msgElement);
 
     } catch (err) {
         console.error('Processing error:', err);
         removeTypingIndicator(typingId);
         playErrorSound();
-        setStatus('❌', isTwi() ? TWI_STATUS.error : '');
-        addMessage('error', '⚠️ ' + (navigator.onLine ? 'Kafra, bɔ mmɔden bio 🔄' : '📵 No Internet') + ' — 🔄');
+        setStatus('❌', STATUS.error);
+        addMessage('error', '⚠️ Kafra, bɔ mmɔden bio 🔄');
     } finally {
         state.isProcessing = false;
         dom.btnMic.classList.remove('processing');
@@ -299,68 +249,54 @@ async function processAudio(audioBlob, mimeType) {
 
 /**
  * Phase 2: Fetch TTS audio in background and auto-play.
- * This runs AFTER the text is already shown to the user.
  */
 async function fetchAndPlayAudio(text, language, msgElement) {
-    // Show audio loading indicator on the message
     const audioBtn = msgElement ? msgElement.querySelector('.play-message-btn') : null;
     if (audioBtn) {
         audioBtn.innerHTML = '⏳ Audio reba...';
         audioBtn.disabled = true;
     }
-
-    setStatus('🔊', isTwi() ? TWI_STATUS.audio_loading : 'Loading audio...');
+    setStatus('🔊', STATUS.audio_loading);
 
     try {
         const formData = new FormData();
         formData.append('text', text);
         formData.append('language', language);
 
-        const response = await fetch('/api/generate-audio', {
-            method: 'POST',
-            body: formData,
-        });
-
+        const response = await fetch('/api/generate-audio', { method: 'POST', body: formData });
         if (!response.ok) throw new Error(`Audio error: ${response.status}`);
         const data = await response.json();
 
         if (data.has_audio && data.audio) {
-            // Store audio data on the message element for replay
             if (msgElement) {
                 msgElement.dataset.audio = data.audio;
                 msgElement.dataset.audioMime = data.audio_mime;
             }
-
-            // Update the replay button
             if (audioBtn) {
                 audioBtn.innerHTML = '🔊 Tie bio (Replay)';
                 audioBtn.disabled = false;
                 audioBtn.onclick = () => playResponseAudio(data.audio, data.audio_mime);
             }
-
-            // Auto-play the audio (audio-first experience!)
             playResponseAudio(data.audio, data.audio_mime);
-            setStatus('📖', isTwi() ? TWI_STATUS.ready : '');
+            setStatus('📖', STATUS.ready);
         } else {
-            // No server audio — use browser TTS fallback
             if (audioBtn) {
                 audioBtn.innerHTML = '🔊 Tie bio (Replay)';
                 audioBtn.disabled = false;
                 audioBtn.onclick = () => speakWithBrowserTTS(text);
             }
             speakWithBrowserTTS(text);
-            setStatus('📖', isTwi() ? TWI_STATUS.ready : '');
+            setStatus('📖', STATUS.ready);
         }
     } catch (err) {
         console.error('Audio fetch error:', err);
-        // Fallback to browser TTS
         if (audioBtn) {
             audioBtn.innerHTML = '🔊 Tie bio (Replay)';
             audioBtn.disabled = false;
             audioBtn.onclick = () => speakWithBrowserTTS(text);
         }
         speakWithBrowserTTS(text);
-        setStatus('📖', isTwi() ? TWI_STATUS.ready : '');
+        setStatus('📖', STATUS.ready);
     }
 }
 
@@ -383,7 +319,7 @@ function showTypingIndicator() {
             <span class="dot"></span>
             <span class="dot"></span>
         </div>
-        <span class="typing-text">${isTwi() ? 'Ɔkyerɛkyerɛfoɔ no resusuw...' : 'Thinking...'}</span>
+        <span class="typing-text">Ɔkyerɛkyerɛfoɔ no resusuw...</span>
     `;
     dom.messages.appendChild(div);
     dom.conversationArea.scrollTop = dom.conversationArea.scrollHeight;
@@ -435,7 +371,7 @@ function playResponseAudio(base64Audio, mimeType) {
 
 function showAudioPlayer(audioUrl) {
     dom.audioPlayer.style.display = 'flex';
-    dom.audioPlayer.style.background = state.currentLanguage ? state.currentLanguage.color + '33' : '';
+    dom.audioPlayer.style.background = state.currentLanguage.color + '33';
     dom.btnPlayResponse.onclick = () => {
         if (dom.responseAudio.paused) {
             dom.responseAudio.play();
@@ -461,51 +397,42 @@ function stopCurrentAudio() {
 // ============================================================
 // BROWSER TTS FALLBACK
 // ============================================================
-function prepareTextForSpeech(text, langCode) {
+function prepareTextForSpeech(text) {
     let clean = text
         .replace(/###\s+/g, '').replace(/##\s+/g, '').replace(/#\s+/g, '')
         .replace(/\*\*/g, '').replace(/\*/g, '')
         .replace(/__|_/g, '').replace(/>/g, '')
         .replace(/\[.*?\]/g, '').replace(/---/g, '').trim();
 
-    if (langCode === 'tw' || langCode === 'fat') {
-        clean = clean
-            .replace(/ɛ/g, 'e').replace(/Ɛ/g, 'E')
-            .replace(/ɔ/g, 'o').replace(/Ɔ/g, 'O')
-            .replace(/\bOnyankopɔn\b/gi, 'O-nyankopon')
-            .replace(/\bNyankopɔn\b/gi, 'Nyankopon')
-            .replace(/\bTwerɛ\b/gi, 'Twere')
-            .replace(/\bMpaebɔ\b/gi, 'Mpaebo')
-            .replace(/\bMmpaeɛ\b/gi, 'Mpaee')
-            .replace(/\bAsomdwoeɛ\b/gi, 'Asomdwee')
-            .replace(/\bNhyira\b/gi, 'N-hyira');
-    }
+    // Phonetic smoothing for Akan pronunciation
+    clean = clean
+        .replace(/ɛ/g, 'e').replace(/Ɛ/g, 'E')
+        .replace(/ɔ/g, 'o').replace(/Ɔ/g, 'O')
+        .replace(/\bOnyankopɔn\b/gi, 'O-nyankopon')
+        .replace(/\bNyankopɔn\b/gi, 'Nyankopon')
+        .replace(/\bTwerɛ\b/gi, 'Twere')
+        .replace(/\bMpaebɔ\b/gi, 'Mpaebo')
+        .replace(/\bMmpaeɛ\b/gi, 'Mpaee')
+        .replace(/\bAsomdwoeɛ\b/gi, 'Asomdwee')
+        .replace(/\bNhyira\b/gi, 'N-hyira');
     return clean;
 }
 
 function speakWithBrowserTTS(text) {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-    const langCode = state.currentLanguage ? state.currentLanguage.code : 'tw';
-    const cleanText = prepareTextForSpeech(text, langCode);
+    const cleanText = prepareTextForSpeech(text);
     const chunks = cleanText.split(/(?<=[.!?:;\n])\s+/).map(c => c.trim()).filter(c => c.length > 0);
     const voices = window.speechSynthesis.getVoices();
-    const langMap = {
-        'tw': ['en-GH', 'en-NG', 'ak', 'tw', 'en-ZA', 'en-GB'],
-        'fat': ['en-GH', 'en-NG', 'ak', 'tw', 'en-ZA', 'en-GB'],
-        'ee': ['en-GH', 'en-NG', 'ee', 'en-ZA', 'en-GB'],
-        'gaa': ['en-GH', 'en-NG', 'en-ZA', 'en-GB'],
-        'ha': ['ha', 'ha-NG', 'ha-NE', 'en-NG', 'en-GH'],
-    };
+
+    // Find best voice for Twi/Akan
     let matchedVoice = null;
     let matchedLang = 'en-GH';
-    if (state.currentLanguage) {
-        const preferredLangs = langMap[state.currentLanguage.code] || ['en-GH', 'en'];
-        for (const lang of preferredLangs) {
-            const voice = voices.find(v => v.lang.toLowerCase().replace('_', '-').startsWith(lang.toLowerCase()));
-            if (voice) { matchedVoice = voice; matchedLang = voice.lang; break; }
-        }
+    for (const lang of ['en-GH', 'en-NG', 'ak', 'tw', 'en-ZA', 'en-GB']) {
+        const voice = voices.find(v => v.lang.toLowerCase().replace('_', '-').startsWith(lang.toLowerCase()));
+        if (voice) { matchedVoice = voice; matchedLang = voice.lang; break; }
     }
+
     chunks.forEach((chunk) => {
         const utterance = new SpeechSynthesisUtterance(chunk);
         if (matchedVoice) { utterance.voice = matchedVoice; utterance.lang = matchedLang; }
@@ -523,7 +450,7 @@ function setStatus(icon, text) {
     dom.statusText.textContent = text;
 }
 
-function addMessage(type, content, audioData = null) {
+function addMessage(type, content) {
     if (dom.welcomeMessage.style.display !== 'none') {
         dom.welcomeMessage.style.display = 'none';
     }
@@ -533,9 +460,7 @@ function addMessage(type, content, audioData = null) {
     if (type === 'ai') {
         messageDiv.innerHTML = `
             <div class="message-text">${formatMessageText(content)}</div>
-            <button class="play-message-btn" disabled>
-                ⏳ Audio reba...
-            </button>
+            <button class="play-message-btn" disabled>⏳ Audio reba...</button>
         `;
     } else {
         messageDiv.innerHTML = `<div class="message-text">${formatMessageText(content)}</div>`;
@@ -572,6 +497,7 @@ function replayMessage(button) {
 // EVENT LISTENERS
 // ============================================================
 function setupEventListeners() {
+    // Back button — hidden since no language screen, but keep for safety
     dom.btnBack.addEventListener('click', () => {
         stopCurrentAudio();
         stopMicStream();
@@ -579,12 +505,9 @@ function setupEventListeners() {
             state.isRecording = false;
             if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') state.mediaRecorder.stop();
         }
-        showScreen('language');
-        playBeep(500, 100);
     });
 
     dom.btnMic.addEventListener('click', () => toggleRecording());
-
     window.addEventListener('online', () => { dom.offlineBanner.style.display = 'none'; });
     window.addEventListener('offline', () => { dom.offlineBanner.style.display = 'flex'; });
 
@@ -603,7 +526,7 @@ function checkOnlineStatus() {
 }
 
 // ============================================================
-// GLOBAL FUNCTIONS
+// GLOBAL
 // ============================================================
 window.replayMessage = replayMessage;
 window.speakWithBrowserTTS = speakWithBrowserTTS;

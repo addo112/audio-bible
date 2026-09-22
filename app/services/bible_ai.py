@@ -39,14 +39,9 @@ RESPONSE STRUCTURE (keep each section SHORT):
 3. 💡 KYERƐKYERƐ — Brief explanation using everyday Ghanaian life examples (farming, market, family)
 4. 🙏 NHYIRA — Short closing prayer/blessing (2-3 sentences)
 
-LANGUAGE RULES:
-- tw: 100% Asante Twi. Use authentic Akan vowels (ɛ, ɔ). Never literal English translations.
-- fat: Pure Mfantse
-- ee: Pure Eʋegbe
-- gaa: Pure Gã
-- ha: Pure Hausa
+LANGUAGE: 100% pure, authentic, idiomatic Asante Twi at all times. Use proper Akan vowels (ɛ, ɔ). Never use literal English translations — think and speak natively in Twi.
 
-Remember: You are speaking to listeners who hear, not read. Be warm, clear, and conversational like a beloved pastor."""
+Remember: You are speaking to listeners who hear, not read. Be warm, clear, and conversational like a beloved pastor in Kumasi."""
 
 
 class BibleAI:
@@ -122,14 +117,7 @@ class BibleAI:
                 logger.warning(f"Model {model} failed: {e}. Trying fallback...")
                 continue
         
-        error_messages = {
-            "tw": "Kafra me dɔfo, bɔ mmɔden bio. Awurade nhyira wo!",
-            "fat": "Kafra, bɔ mmɔden bio ma me.",
-            "ee": "Taflatse, tso aɖe kpɔ.",
-            "gaa": "Bͻ hͻͻmͻ, tso kɛ kpɔ.",
-            "ha": "Yi haƙuri, ka gwada yanzu.",
-        }
-        return error_messages.get(language_code, error_messages["tw"]), sid
+        return "Kafra me dɔfo, bɔ mmɔden bio. Awurade nhyira wo!", sid
     
     async def process_text(
         self,
@@ -169,14 +157,7 @@ class BibleAI:
                 logger.warning(f"Model {model} failed: {e}. Trying fallback...")
                 continue
         
-        error_messages = {
-            "tw": "Kafra me dɔfo, bɔ mmɔden bio.",
-            "fat": "Kafra, bɔ mmɔden bio.",
-            "ee": "Taflatse, tso aɖe kpɔ.",
-            "gaa": "Bͻ hͻͻmͻ, tso kɛ kpɔ.",
-            "ha": "Yi haƙuri, ka gwada yanzu.",
-        }
-        return error_messages.get(language_code, error_messages["tw"]), sid
+        return "Kafra me dɔfo, bɔ mmɔden bio.", sid
 
 
 # Singleton instance

@@ -101,9 +101,17 @@ class Conversation:
                 self._last_passage[sid] = req.passage
                 yield {"type": "mode", "mode": "read", "title": req.passage.label}
 
-                # Check if whole chapter(s) requested and official dramatized Asante Twi Audio Bible MP3 is available
+                # Stream classical Asante Twi Scripture using the BibleTTS narrator
+                # (falls back to chapter_audio_urls MP3 only if local/cloud TTS is unavailable)
                 used_official_mp3 = False
-                if req.passage.verse_start is None:
+                from app.services.local_tts import local_tts
+
+                is_whole_chapter = req.passage.verse_start is None or (
+                    req.passage.verse_start == 1
+                    and req.passage.verse_end is not None
+                    and req.passage.verse_end >= len(verses)
+                )
+                if is_whole_chapter and not local_tts.load():
                     chapter_mp3s: list[tuple[int, bytes, str]] = []
                     for ch in range(req.passage.chapter_start, req.passage.chapter_end + 1):
                         url = bible_index.get_chapter_audio_url(req.passage.book, ch)
@@ -114,13 +122,12 @@ class Conversation:
 
                     if len(chapter_mp3s) == (req.passage.chapter_end - req.passage.chapter_start + 1):
                         used_official_mp3 = True
-                        # Stream all verses as readable text first
                         display_lines = [f"📖 {req.passage.label}"]
                         cur_ch = req.passage.chapter_start
                         for v in verses:
                             if v["chapter"] != cur_ch:
                                 cur_ch = v["chapter"]
-                                display_lines.append(f"— Ti {cur_ch} —")
+                                display_lines.append(f"— Eti {cur_ch} —")
                             display_lines.append(f"{v['verse']}. {v['text']}")
                         yield {"type": "text", "seq": 1, "text": "\n".join(display_lines)}
 
@@ -190,29 +197,42 @@ class Conversation:
     @staticmethod
     def _reading_items(p: Passage, verses: list[dict]) -> list[tuple[str, str | None]]:
         """
-        Group verses into natural cohesive spoken passages (~250-350 chars each)
-        so TTS speaks with continuous Ghanaian cadence instead of choppy 1-verse fragments.
+        Group verses into natural cohesive spoken passages so the BibleTTS narrator
+        speaks with continuous Ghanaian liturgical cadence. Emits the opening announcement
+        + first verse immediately for ~1.1s time-to-first-audio.
         """
+        from app.services.bible_books import spoken_reference
+
         items: list[tuple[str, str | None]] = []
         disp_buf: list[str] = [f"📖 {p.label}"]
-        spoken_buf: list[str] = [p.spoken_title + "."]
+        if p.verse_start is None and p.chapter_start == p.chapter_end and verses:
+            opening_ref = spoken_reference(p.book, p.chapter_start, 1, verses[-1]["verse"]) + "."
+        else:
+            opening_ref = p.spoken_title + "."
+        if p.book == 0 and p.chapter_start == 1 and (p.verse_start is None or p.verse_start == 1):
+            opening_ref += " Etifi asɛm no, ɔse: Ahyaseɛ."
+        spoken_buf: list[str] = [opening_ref]
         current_ch = p.chapter_start
+        first_emitted = False
 
         for v in verses:
             if v["chapter"] != current_ch:
                 if disp_buf:
                     items.append(("\n".join(disp_buf), " ".join(spoken_buf)))
                     disp_buf, spoken_buf = [], []
+                    first_emitted = True
                 current_ch = v["chapter"]
-                disp_buf.append(f"— Ti {current_ch} —")
-                spoken_buf.append(f"Ti {twi_number(current_ch)}.")
+                disp_buf.append(f"— Eti {current_ch} —")
+                spoken_buf.append(f"Eti {twi_number(current_ch)}.")
 
             disp_buf.append(f"{v['verse']}. {v['text']}")
             spoken_buf.append(v["text"])
 
-            if sum(len(s) for s in spoken_buf) >= 280:
+            threshold = 90 if not first_emitted else 240
+            if sum(len(s) for s in spoken_buf) >= threshold:
                 items.append(("\n".join(disp_buf), " ".join(spoken_buf)))
                 disp_buf, spoken_buf = [], []
+                first_emitted = True
 
         if disp_buf:
             items.append(("\n".join(disp_buf), " ".join(spoken_buf)))

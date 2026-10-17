@@ -221,16 +221,43 @@ def twi_number(n: int) -> str:
     return " ne ".join(parts)
 
 
-def spoken_reference(book_idx: int, chapter: int, verse_start: int | None = None, verse_end: int | None = None) -> str:
-    """e.g. 'Nnwom, ti aduonu mmiɛnsa, nkyekyɛm baako kɔsi nsia'."""
-    name = BOOKS[book_idx]["tw"]
-    m = re.match(r"^([123]) (.+)$", name)
-    if m:
-        ordinal = {"1": "a ɛdi kan", "2": "a ɛtɔ so mmienu", "3": "a ɛtɔ so mmiɛnsa"}[m.group(1)]
-        name = f"{m.group(2)} {ordinal}"
-    s = f"{name}, ti {twi_number(chapter)}"
+# Classical liturgical introductions for the Pentateuch & major books (matching Open.Bible / BSG Audio Bible lector)
+_LITURGICAL_TITLES = {
+    0: "Mose nhoma a edi kan, Genesis",
+    1: "Mose nhoma a ɛtɔ so mmienu, Exodus",
+    2: "Mose nhoma a ɛtɔ so mmiɛnsa, Leviticus",
+    3: "Mose nhoma a ɛtɔ so nnan, Numeri",
+    4: "Mose nhoma a ɛtɔ so nnum, Deuteronomium",
+}
+
+
+def spoken_reference(
+    book_idx: int,
+    chapter: int,
+    verse_start: int | None = None,
+    verse_end: int | None = None,
+) -> str:
+    """
+    Classical Asante Twi liturgical reference phrasing matching the BSG / Open.Bible
+    studio narrator (e.g. 'Mose nhoma a edi kan, Genesis, eti baako, firi emu baako de kɔsi aduasa baako').
+    """
+    if book_idx in _LITURGICAL_TITLES and (verse_start is None or verse_start == 1):
+        name = _LITURGICAL_TITLES[book_idx]
+    else:
+        name = BOOKS[book_idx]["tw"]
+        m = re.match(r"^([123]) (.+)$", name)
+        if m:
+            ordinal = {
+                "1": "nhoma a edi kan",
+                "2": "nhoma a ɛtɔ so mmienu",
+                "3": "nhoma a ɛtɔ so mmiɛnsa",
+            }[m.group(1)]
+            name = f"{m.group(2)} {ordinal}"
+    s = f"{name}, eti {twi_number(chapter)}"
     if verse_start:
-        s += f", nkyekyɛm {twi_number(verse_start)}"
         if verse_end and verse_end != verse_start:
-            s += f" kɔsi {twi_number(verse_end)}"
+            s += f", firi emu {twi_number(verse_start)} de kɔsi {twi_number(verse_end)}"
+        else:
+            s += f", emu {twi_number(verse_start)}"
     return s
+

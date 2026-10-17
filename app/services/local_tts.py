@@ -1,14 +1,16 @@
 """
-Step 3: Local Native Asante Twi Text-to-Speech (`Kasanoma` / `Piper TTS` / `Nano-Twi` / `EveryVoice`).
+Step 3: Local Native Asante Twi Text-to-Speech (`BibleTTS VITS` / `Kasanoma` / `Nano-Twi` / `EveryVoice`).
 
 Supports multiple offline neural Asante Twi TTS backends on CPU:
-1. `nano-twi` (`ghananlpcommunity/nano-twi` by `michsethowusu`) — Matcha-TTS + Vocos 22.05 kHz
-   ONNX model served via `sherpa-onnx` with `espeak-ng` `lfn` IPA phonemization (~4x realtime on CPU, no PyTorch).
-2. `kasanoma` (`michsethowusu/kasanoma`) — Piper VITS 16 kHz ONNX model served via `sherpa-onnx`
-   with `espeak-ng` `lfn` IPA phonemization (~8x realtime on CPU, no PyTorch).
-3. `everyvoice` (`multilingual-tts/EveryVoice-OpenBible-Twi-Asante`) — FastSpeech2 + HiFi-GAN
-   trained on 26,165 Open.Bible Asante Twi utterances.
-4. `vits` (`danieldzikunuofmarvel/mms-tts-asante-twi-bibletts`) — Hugging Face VITS model.
+1. `bibletts` (`danieldzikunuofmarvel/mms-tts-asante-twi-bibletts`) — VITS model fine-tuned
+   directly on the single-speaker Open.Bible / BibleTTS Asante Twi studio narrator
+   (deep baritone Ghanaian lector heard in the official Asante Twi Audio Bible).
+   Uses `VitsTokenizer.from_pretrained(..., normalize=False)` + `VOCAB = set(tok.encoder)`
+   with NFC normalization, lowercase mapping, and Twi number expansion so every Akan
+   character (`ɛ`, `ɔ`, punctuation, apostrophes) is preserved accurately.
+2. `nano-twi` (`ghananlpcommunity/nano-twi` by `michsethowusu`) — Matcha-TTS + Vocos 22.05 kHz
+   ONNX model served via `sherpa-onnx` with `espeak-ng` `lfn` IPA phonemization.
+3. `kasanoma` (`michsethowusu/kasanoma`) — Piper VITS 16 kHz ONNX model served via `sherpa-onnx`.
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 import urllib.request
 import wave
 import zipfile
@@ -36,13 +39,27 @@ MODELS_DIR = os.path.abspath(
 )
 NANO_TWI_URL = "https://github.com/michsethowusu/nano-twi/releases/download/v1.0/nano-twi-sherpa-onnx.zip"
 KASANOMA_URL = "https://github.com/michsethowusu/kasanoma/releases/download/v1/kasanoma_model-twi.zip"
+BIBLETTS_REPO = "danieldzikunuofmarvel/mms-tts-asante-twi-bibletts"
+
+_CHAR_MAP = {
+    "\u2018": "'",
+    "\u2019": "'",
+    "\u201c": "",
+    "\u201d": "",
+    '"': "",
+    "\u2013": "-",
+    "\u2014": "-",
+    "\u00a0": " ",
+    "\u2026": ".",
+}
 
 
 def prepare_for_speech(text: str) -> str:
     """
-    Normalize Asante Twi text for natural Ghanaian pronunciation:
+    Normalize Asante Twi text for natural Ghanaian liturgical pronunciation:
     - Strip markdown, brackets, and emojis
-    - Convert Bible verse citations (e.g. 3:16 -> ti mmiɛnsa, nkyekyɛm dunsia)
+    - Convert Bible verse citations (e.g. 3:16 -> eti mmiɛnsa, emu dunsia)
+    - Convert verse ranges (e.g. 1-31 -> firi emu baako de kɔsi aduasa baako)
     - Convert digits to spoken Asante Twi number words
     - Normalize curly apostrophes and glottal stops (ʼ / ’ -> ')
     """
@@ -50,24 +67,38 @@ def prepare_for_speech(text: str) -> str:
     t = re.sub(r"[#*_>`\[\]]", "", t)
     t = (
         t.replace("—", ", ")
-        .replace("–", " kɔsi ")
+        .replace("–", "-")
         .replace("“", "")
         .replace("”", "")
         .replace('"', "")
         .replace("ʼ", "'")
         .replace("’", "'")
     )
+    # Chapter:Verse-Verse (e.g. 1:1-31 -> eti baako, firi emu baako de kɔsi aduasa baako)
     t = re.sub(
-        r"(\d+)\s*:\s*(\d+)",
-        lambda m: f"ti {twi_number(int(m.group(1)))}, nkyekyɛm {twi_number(int(m.group(2)))}",
+        r"(\d+)\s*:\s*(\d+)\s*-\s*(\d+)",
+        lambda m: (
+            f"eti {twi_number(int(m.group(1)))}, "
+            f"firi emu {twi_number(int(m.group(2)))} de kɔsi {twi_number(int(m.group(3)))}"
+        ),
         t,
     )
-    t = re.sub(r"(\d+)\s*-\s*(\d+)", lambda m: f"{m.group(1)} kɔsi {m.group(2)}", t)
+    # Chapter:Verse (e.g. 3:16 -> eti mmiɛnsa, emu dunsia)
+    t = re.sub(
+        r"(\d+)\s*:\s*(\d+)",
+        lambda m: f"eti {twi_number(int(m.group(1)))}, emu {twi_number(int(m.group(2)))}",
+        t,
+    )
+    t = re.sub(
+        r"(\d+)\s*-\s*(\d+)",
+        lambda m: f"firi {twi_number(int(m.group(1)))} de kɔsi {twi_number(int(m.group(2)))}",
+        t,
+    )
     t = re.sub(r"\d+", lambda m: twi_number(int(m.group(0))), t)
     return re.sub(r"\s+", " ", t).strip()
 
 
-def split_sentences(text: str, max_len: int = 240) -> list[str]:
+def split_sentences(text: str, max_len: int = 220) -> list[str]:
     """Split into speakable sentences at punctuation, then at commas if still long."""
     parts = [p.strip() for p in re.split(r"(?<=[.!?;:])\s+|\n+", text) if p.strip()]
     out: list[str] = []
@@ -98,18 +129,23 @@ def _encode_onnx_metadata(meta: dict[str, str]) -> bytes:
 
 
 class LocalTTS:
-    """Offline neural Asante Twi TTS powered by sherpa-onnx (Kasanoma / Nano-Twi) or EveryVoice."""
+    """
+    Offline neural Asante Twi TTS powered by:
+    - `bibletts` (`danieldzikunuofmarvel/mms-tts-asante-twi-bibletts` — exact Open.Bible studio narrator)
+    - `sherpa-onnx` (`kasanoma` Piper VITS / `nano-twi` Matcha+Vocos) fallback.
+    """
 
     def __init__(self):
         s = get_settings()
-        self.model_id = s.LOCAL_TTS_MODEL or "nano-twi"
-        self.speed = s.LOCAL_TTS_SPEAKING_RATE or 0.96
+        self.model_id = s.LOCAL_TTS_MODEL or "bibletts"
+        self.speed = s.LOCAL_TTS_SPEAKING_RATE or 0.94
         self.threads = max(1, s.TORCH_THREADS)
         self._sherpa_tts = None
         self._vits_model = None
         self._vits_tok = None
+        self._vits_vocab: set[str] = set()
         self._torch = None
-        self.sampling_rate = 22050
+        self.sampling_rate = 16000
         self._lock = threading.Lock()
         self.available = True
         self.error: str | None = None
@@ -119,7 +155,6 @@ class LocalTTS:
         bundle_dir = os.path.join(MODELS_DIR, "nano-twi", "nano-twi")
         acoustic = os.path.join(bundle_dir, "twi_ep045_steps4.onnx")
         vocoder = os.path.join(bundle_dir, "vocos-22khz-univ.onnx")
-        tokens = os.path.join(bundle_dir, "tokens.txt")
         espeak_dir = os.path.join(bundle_dir, "espeak-ng-data")
 
         if os.path.exists(acoustic) and os.path.exists(vocoder) and os.path.exists(espeak_dir):
@@ -133,7 +168,6 @@ class LocalTTS:
             zf.extractall(os.path.join(MODELS_DIR, "nano-twi"))
         try:
             os.remove(zip_path)
-            # Remove steps2 model if present to save disk space
             steps2 = os.path.join(bundle_dir, "twi_ep045_steps2.onnx")
             if os.path.exists(steps2):
                 os.remove(steps2)
@@ -141,7 +175,7 @@ class LocalTTS:
             pass
         return bundle_dir
 
-    def _ensure_kasanoma_files(self, espeak_dir: str) -> tuple[str, str]:
+    def _ensure_kasanoma_files(self) -> tuple[str, str]:
         """Ensure Kasanoma Piper VITS ONNX model + tokens.txt are ready for sherpa-onnx."""
         k_dir = os.path.join(MODELS_DIR, "kasanoma")
         patched_onnx = os.path.join(k_dir, "kasanoma_sherpa.onnx")
@@ -185,102 +219,119 @@ class LocalTTS:
 
         return patched_onnx, tokens_path
 
+    def _clean_for_vits(self, text: str) -> str:
+        """
+        Clean and normalize Asante Twi text for `mms-tts-asante-twi-bibletts`:
+        1. Expand numbers & references into Asante Twi words (`prepare_for_speech`)
+        2. NFC normalize + map curly punctuation + lowercase (critical for VitsTokenizer!)
+        3. Filter characters to `self._vits_vocab` (`set(tok.encoder)`)
+        """
+        t = prepare_for_speech(text)
+        t = unicodedata.normalize("NFC", t)
+        t = "".join(_CHAR_MAP.get(c, c) for c in t).lower()
+        if self._vits_vocab:
+            t = "".join(c if c in self._vits_vocab else " " for c in t)
+        return re.sub(r"\s+", " ", t).strip()
+
     def load(self) -> bool:
-        """Load the configured local Twi neural TTS model."""
-        if self._sherpa_tts is not None or self._vits_model is not None:
+        """Load the configured local Asante Twi neural TTS model."""
+        if self._vits_model is not None or self._sherpa_tts is not None:
             return True
         if not self.available:
             return False
 
         with self._lock:
-            if self._sherpa_tts is not None or self._vits_model is not None:
+            if self._vits_model is not None or self._sherpa_tts is not None:
                 return True
 
-            # Strategy A: sherpa-onnx (Kasanoma Piper VITS or Nano-Twi Matcha+Vocos)
-            if self.model_id in ("nano-twi", "kasanoma", "piper"):
+            # Strategy A: Open.Bible / BibleTTS VITS narrator (`danieldzikunuofmarvel/mms-tts-asante-twi-bibletts`)
+            if self.model_id in ("bibletts", "vits") or "/" in self.model_id:
                 try:
                     t0 = time.time()
-                    import sherpa_onnx
+                    import torch
+                    from transformers import VitsModel, VitsTokenizer
 
-                    nano_dir = self._ensure_nano_twi_files()
-                    espeak_dir = os.path.join(nano_dir, "espeak-ng-data")
-
-                    if self.model_id in ("kasanoma", "piper"):
-                        onnx_path, tokens_path = self._ensure_kasanoma_files(espeak_dir)
-                        self._sherpa_tts = sherpa_onnx.OfflineTts(
-                            sherpa_onnx.OfflineTtsConfig(
-                                model=sherpa_onnx.OfflineTtsModelConfig(
-                                    vits=sherpa_onnx.OfflineTtsVitsModelConfig(
-                                        model=onnx_path,
-                                        lexicon="",
-                                        tokens=tokens_path,
-                                        data_dir=espeak_dir,
-                                        noise_scale=0.667,
-                                        noise_scale_w=0.8,
-                                        length_scale=1.02,
-                                    ),
-                                    num_threads=self.threads,
-                                    provider="cpu",
-                                ),
-                                max_num_sentences=1,
-                            )
-                        )
-                        self.sampling_rate = self._sherpa_tts.sample_rate
-                        logger.info(
-                            f"Kasanoma Piper Twi TTS loaded via sherpa-onnx ({self.sampling_rate}Hz) in {time.time() - t0:.1f}s"
-                        )
-                        return True
-                    else:
-                        # Default: Nano-Twi (Matcha-TTS + Vocos 22.05kHz by michsethowusu)
-                        self._sherpa_tts = sherpa_onnx.OfflineTts(
-                            sherpa_onnx.OfflineTtsConfig(
-                                model=sherpa_onnx.OfflineTtsModelConfig(
-                                    matcha=sherpa_onnx.OfflineTtsMatchaModelConfig(
-                                        acoustic_model=os.path.join(
-                                            nano_dir, "twi_ep045_steps4.onnx"
-                                        ),
-                                        vocoder=os.path.join(
-                                            nano_dir, "vocos-22khz-univ.onnx"
-                                        ),
-                                        lexicon="",
-                                        tokens=os.path.join(nano_dir, "tokens.txt"),
-                                        data_dir=espeak_dir,
-                                        noise_scale=0.667,
-                                        length_scale=1.0,
-                                    ),
-                                    num_threads=self.threads,
-                                    provider="cpu",
-                                ),
-                                max_num_sentences=1,
-                            )
-                        )
-                        self.sampling_rate = self._sherpa_tts.sample_rate
-                        logger.info(
-                            f"Nano-Twi Matcha+Vocos TTS loaded via sherpa-onnx ({self.sampling_rate}Hz) in {time.time() - t0:.1f}s"
-                        )
-                        return True
+                    hf_id = (
+                        self.model_id
+                        if "/" in self.model_id
+                        else BIBLETTS_REPO
+                    )
+                    torch.set_num_threads(self.threads)
+                    self._vits_tok = VitsTokenizer.from_pretrained(hf_id, normalize=False)
+                    self._vits_vocab = set(self._vits_tok.encoder)
+                    self._vits_model = VitsModel.from_pretrained(hf_id).eval()
+                    self._vits_model.speaking_rate = self.speed
+                    self._torch = torch
+                    self.sampling_rate = self._vits_model.config.sampling_rate
+                    logger.info(
+                        f"Asante Twi BibleTTS narrator loaded ({hf_id}, {self.sampling_rate}Hz, "
+                        f"speaking_rate={self.speed}) in {time.time() - t0:.1f}s"
+                    )
+                    return True
                 except Exception as e:
-                    logger.warning(f"sherpa-onnx Twi TTS load failed: {e}")
+                    logger.warning(f"BibleTTS VITS load failed ({e}), falling back to sherpa-onnx...")
 
-            # Strategy B: Hugging Face VITS fallback (if torch + transformers installed)
+            # Strategy B: sherpa-onnx (Kasanoma Piper VITS or Nano-Twi Matcha+Vocos)
             try:
                 t0 = time.time()
-                import torch
-                from transformers import AutoTokenizer, VitsModel
+                import sherpa_onnx
 
-                hf_id = (
-                    self.model_id
-                    if "/" in self.model_id
-                    else "danieldzikunuofmarvel/mms-tts-asante-twi-bibletts"
-                )
-                torch.set_num_threads(self.threads)
-                self._vits_tok = AutoTokenizer.from_pretrained(hf_id)
-                self._vits_model = VitsModel.from_pretrained(hf_id).eval()
-                self._vits_model.speaking_rate = self.speed
-                self._torch = torch
-                self.sampling_rate = self._vits_model.config.sampling_rate
-                logger.info(f"HF VITS Twi TTS loaded ({hf_id}) in {time.time() - t0:.1f}s")
-                return True
+                nano_dir = self._ensure_nano_twi_files()
+                espeak_dir = os.path.join(nano_dir, "espeak-ng-data")
+
+                if self.model_id in ("kasanoma", "piper"):
+                    onnx_path, tokens_path = self._ensure_kasanoma_files()
+                    self._sherpa_tts = sherpa_onnx.OfflineTts(
+                        sherpa_onnx.OfflineTtsConfig(
+                            model=sherpa_onnx.OfflineTtsModelConfig(
+                                vits=sherpa_onnx.OfflineTtsVitsModelConfig(
+                                    model=onnx_path,
+                                    lexicon="",
+                                    tokens=tokens_path,
+                                    data_dir=espeak_dir,
+                                    noise_scale=0.667,
+                                    noise_scale_w=0.8,
+                                    length_scale=1.02,
+                                ),
+                                num_threads=self.threads,
+                                provider="cpu",
+                            ),
+                            max_num_sentences=1,
+                        )
+                    )
+                    self.sampling_rate = self._sherpa_tts.sample_rate
+                    logger.info(
+                        f"Kasanoma Piper Twi TTS loaded via sherpa-onnx ({self.sampling_rate}Hz) in {time.time() - t0:.1f}s"
+                    )
+                    return True
+                else:
+                    self._sherpa_tts = sherpa_onnx.OfflineTts(
+                        sherpa_onnx.OfflineTtsConfig(
+                            model=sherpa_onnx.OfflineTtsModelConfig(
+                                matcha=sherpa_onnx.OfflineTtsMatchaModelConfig(
+                                    acoustic_model=os.path.join(
+                                        nano_dir, "twi_ep045_steps4.onnx"
+                                    ),
+                                    vocoder=os.path.join(
+                                        nano_dir, "vocos-22khz-univ.onnx"
+                                    ),
+                                    lexicon="",
+                                    tokens=os.path.join(nano_dir, "tokens.txt"),
+                                    data_dir=espeak_dir,
+                                    noise_scale=0.667,
+                                    length_scale=1.0,
+                                ),
+                                num_threads=self.threads,
+                                provider="cpu",
+                            ),
+                            max_num_sentences=1,
+                        )
+                    )
+                    self.sampling_rate = self._sherpa_tts.sample_rate
+                    logger.info(
+                        f"Nano-Twi Matcha+Vocos TTS loaded via sherpa-onnx ({self.sampling_rate}Hz) in {time.time() - t0:.1f}s"
+                    )
+                    return True
             except Exception as e:
                 self.available = False
                 self.error = str(e)
@@ -291,12 +342,25 @@ class LocalTTS:
         """Synthesize one sentence -> raw 16-bit PCM bytes (mono)."""
         if not self.load():
             return None
-        clean = prepare_for_speech(text)
-        if not re.search(r"[A-Za-zɛɔƐƆ]", clean):
-            return None
 
         with self._lock:
+            if self._vits_model is not None:
+                import numpy as np
+
+                clean = self._clean_for_vits(text)
+                if not re.search(r"[a-zɛɔ]", clean):
+                    return None
+                inputs = self._vits_tok(clean, return_tensors="pt")
+                if inputs["input_ids"].shape[-1] < 2:
+                    return None
+                with self._torch.inference_mode():
+                    wav = self._vits_model(**inputs).waveform[0].detach().numpy()
+                return (np.clip(wav, -1, 1) * 32767).astype(np.int16).tobytes()
+
             if self._sherpa_tts is not None:
+                clean = prepare_for_speech(text)
+                if not re.search(r"[A-Za-zɛɔƐƆ]", clean):
+                    return None
                 audio = self._sherpa_tts.generate(clean, sid=0, speed=self.speed)
                 if not audio.samples:
                     return None
@@ -310,20 +374,10 @@ class LocalTTS:
                 )
                 return pcm.tobytes()
 
-            if self._vits_model is not None:
-                import numpy as np
-
-                inputs = self._vits_tok(clean, return_tensors="pt")
-                if inputs["input_ids"].shape[-1] < 2:
-                    return None
-                with self._torch.inference_mode():
-                    wav = self._vits_model(**inputs).waveform[0].numpy()
-                return (np.clip(wav, -1, 1) * 32767).astype(np.int16).tobytes()
-
         return None
 
-    def synthesize(self, text: str, pause_s: float = 0.22) -> tuple[bytes | None, str | None]:
-        """Synthesize any length of Asante Twi text -> WAV bytes."""
+    def synthesize(self, text: str, pause_s: float = 0.26) -> tuple[bytes | None, str | None]:
+        """Synthesize any length of Asante Twi text -> WAV bytes with solemn liturgical pauses."""
         chunks = split_sentences(prepare_for_speech(text))
         if not chunks:
             return None, None

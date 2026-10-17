@@ -40,9 +40,9 @@ QUESTION_WORDS = {
 CONTINUE_PHRASES = [
     "toa so", "toaso", "continue", "next chapter", "edi so", "eba so", "nea edi so", "dee edi so",
 ]
-CHAPTER_FILLERS = {"ti", "tiri", "chapter", "chapters", "chap", "ch", "a", "eto", "so", "no", "dee"}
-VERSE_WORDS = {"nkyekyem", "nkyekyemu", "verse", "verses", "vs", "v", ":"}
-RANGE_WORDS = {"kosi", "-", "to", "through", "till", "until", "kopem"}
+CHAPTER_FILLERS = {"ti", "eti", "tiri", "etiri", "chapter", "chapters", "chap", "ch", "a", "eto", "so", "no", "dee"}
+VERSE_WORDS = {"nkyekyem", "nkyekyemu", "emu", "firi", "verse", "verses", "vs", "v", ":"}
+RANGE_WORDS = {"kosi", "de", "-", "to", "through", "till", "until", "kopem"}
 STOPWORDS = {
     "na", "ne", "a", "no", "so", "wo", "me", "ho", "mu", "e", "se", "yi", "nso", "ma", "de",
     "ara", "bi", "ka", "fa", "nti", "enti", "o", "w", "n", "m",
@@ -359,8 +359,7 @@ class BibleIndex:
 
         if i < len(tokens) and tokens[i] in RANGE_WORDS:
             j = i
-            i += 1
-            skip(CHAPTER_FILLERS)
+            skip(RANGE_WORDS | CHAPTER_FILLERS)
             n, used = parse_twi_number(tokens[i : i + 6])
             if n and n > ch:
                 ch_end = n
@@ -372,8 +371,7 @@ class BibleIndex:
             v1, used = parse_twi_number(tokens[i : i + 6])
             i += used
             if v1 and i < len(tokens) and tokens[i] in RANGE_WORDS:
-                i += 1
-                skip(VERSE_WORDS)
+                skip(RANGE_WORDS | VERSE_WORDS)
                 v2, used = parse_twi_number(tokens[i : i + 6])
                 i += used
         return ch, ch_end, v1, v2

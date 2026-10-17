@@ -30,14 +30,13 @@ class Settings(BaseSettings):
     WHISPER_COMPUTE_TYPE: str = "int8"
 
     # --- Step 3: Text-to-Speech (Native Ghanaian Asante Twi Voice Output) ---
-    # "hybrid" (Gemini Native Twi + Offline Kasanoma/Nano-Twi sherpa-onnx),
-    # "local" (offline Kasanoma / Nano-Twi / EveryVoice / VITS only), or "gemini"
-    TTS_ENGINE: str = "hybrid"
-    # Local TTS backend: "nano-twi" (michsethowusu Matcha+Vocos 22kHz sherpa-onnx),
-    # "kasanoma" (michsethowusu Piper VITS ONNX), "everyvoice" (EveryVoice OpenBible Twi-Asante),
-    # or "vits" (HuggingFace MMS-TTS BibleTTS)
-    LOCAL_TTS_MODEL: str = "nano-twi"
-    LOCAL_TTS_SPEAKING_RATE: float = 0.96
+    # "local" (primary: offline BibleTTS VITS narrator + Gemini/Kasanoma fallback),
+    # "hybrid" (Gemini Native Twi first + Offline BibleTTS fallback), or "gemini"
+    TTS_ENGINE: str = "local"
+    # Local TTS backend: "bibletts" (danieldzikunuofmarvel/mms-tts-asante-twi-bibletts — exact Open.Bible narrator),
+    # "nano-twi" (michsethowusu Matcha+Vocos 22kHz sherpa-onnx), or "kasanoma" (michsethowusu Piper VITS ONNX)
+    LOCAL_TTS_MODEL: str = "bibletts"
+    LOCAL_TTS_SPEAKING_RATE: float = 0.94
 
     # CPU threads for local ONNX / PyTorch inference
     TORCH_THREADS: int = 4
@@ -64,13 +63,12 @@ LANGUAGES = {
         "khaya_asr_code": "tw",
         "translate_pair": "en-tw",
         "greeting_audio": "Ɛte sɛn! Akwaaba!",
-        # IMPORTANT: Must be a single director clause with NO periods before the colon,
-        # otherwise Gemini TTS will read the English sentences aloud as a preamble!
-        "tts_voice_prompt": "Speak in a warm, deep, native Ghanaian Asante Twi voice: ",
+        # Single Twi-only speaker cue so Gemini TTS never reads an English preamble aloud
+        "tts_voice_prompt": "",
         "sample_questions": [
-            "Kenkan Nnwom ti aduonu mmiɛnsa ma me",
-            "Kyerɛ me Yohane ti mmiɛnsa nkyekyɛm dunsia ase",
-            "Dɛn na Twerɛ Kronkron ka fa gyidie ne ɔdɔ ho?",
+            "Kenkan Genesis eti baako, firi emu baako de kɔsi nnum ma me",
+            "Kenkan Nnwom eti aduonu mmiɛnsa ma me",
+            "Kyerɛ me Yohane eti mmiɛnsa, emu dunsia ase",
         ],
     },
 }

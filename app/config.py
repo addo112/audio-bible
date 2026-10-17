@@ -1,50 +1,50 @@
 """
-Application configuration and language settings.
+Application configuration and Asante Twi voice/knowledge settings.
 """
 import os
-from pydantic_settings import BaseSettings
 from typing import Optional
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # Required: Google Gemini API key (free at https://aistudio.google.com/)
     GEMINI_API_KEY: str = ""
-    
-    # Optional: Khaya AI API key for high-quality Ghanaian TTS
-    # Free tier: 100 calls/month at https://translation.ghananlp.org/
+
+    # Optional: Khaya AI API key for GhanaNLP cloud TTS/ASR
     KHAYA_API_KEY: Optional[str] = None
-    
-    # Khaya API base URL (Azure API Management)
     KHAYA_BASE_URL: str = "https://translation.ghananlp.org"
-    
-    # Gemini model to use for Bible teaching
-    GEMINI_MODEL: str = "gemini-3.5-flash"  # CHANGED from gemini-3.6-flash
-    
-    # Gemini TTS model for native voice generation
-    GEMINI_TTS_MODEL: str = "gemini-3.1-flash-tts-preview"
-    
-    # Default TTS voice name (Gemini prebuilt voice — Charon is deep and resonant like the Audio Bible narrator)
+
+    # Gemini model for Asante Twi Bible teaching (multi-model fallback in bible_ai.py)
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+
+    # Gemini TTS models for expressive native Ghanaian Asante Twi speech
+    GEMINI_TTS_MODEL: str = "gemini-3.8-flash-lite-tts"
     GEMINI_TTS_VOICE: str = "Charon"
-    
-    # --- Native voice loop (local models, CPU) ---
-    # Speech-to-text: "whisper" (GhanaNLP Twi Whisper, local) or "gemini" (cloud transcription)
+
+    # --- Step 1: Speech-to-Text (Voice Input — Akan/Twi Whisper + Gemini fallback) ---
     STT_ENGINE: str = "whisper"
     WHISPER_MODEL: str = "ghananlpcommunity/whisper-large-v3-turbo-twi-ctranslate"
+    WHISPER_HF_MODEL: str = "ghananlpcommunity/whisper-small-twi"
     WHISPER_COMPUTE_TYPE: str = "int8"
-    
-    # Text-to-speech: "local" (native Twi VITS voice) or "gemini"
-    TTS_ENGINE: str = "local"
-    LOCAL_TTS_MODEL: str = "danieldzikunuofmarvel/mms-tts-asante-twi-bibletts"
-    LOCAL_TTS_SPEAKING_RATE: float = 1.0
-    
-    # CPU threads for local models
+
+    # --- Step 3: Text-to-Speech (Native Ghanaian Asante Twi Voice Output) ---
+    # "hybrid" (Gemini Native Twi + Offline Kasanoma/Nano-Twi sherpa-onnx),
+    # "local" (offline Kasanoma / Nano-Twi / EveryVoice / VITS only), or "gemini"
+    TTS_ENGINE: str = "hybrid"
+    # Local TTS backend: "nano-twi" (michsethowusu Matcha+Vocos 22kHz sherpa-onnx),
+    # "kasanoma" (michsethowusu Piper VITS ONNX), "everyvoice" (EveryVoice OpenBible Twi-Asante),
+    # or "vits" (HuggingFace MMS-TTS BibleTTS)
+    LOCAL_TTS_MODEL: str = "nano-twi"
+    LOCAL_TTS_SPEAKING_RATE: float = 0.96
+
+    # CPU threads for local ONNX / PyTorch inference
     TORCH_THREADS: int = 4
-    
-    # Max tokens for short conversational answers
-    ANSWER_MAX_TOKENS: int = 400
-    
+
+    # Max tokens for conversational Asante Twi answers
+    ANSWER_MAX_TOKENS: int = 450
+
     class Config:
         env_file = ".env"
         extra = "ignore"
@@ -63,18 +63,15 @@ LANGUAGES = {
         "khaya_tts_code": "tw",
         "khaya_asr_code": "tw",
         "translate_pair": "en-tw",
-        "greeting_audio": "Ɛte sɛn! Mo abra o!",
-        "tts_voice_prompt": (
-            "You are the official Asante Twi Audio Bible narrator from Ghana (Faith Comes By Hearing / Bible Society of Ghana style). "
-            "Speak in authentic, fluent, idiomatic Asante Twi with a deep, warm, resonant, and natural Ghanaian tone. "
-            "Pronounce every Asante word with authentic Akan tonal cadences and rhythmic pauses. "
-            "Deliver both the Scripture reading and the pastoral teaching with clear, soothing, lifelike clarity: "
-        ),
+        "greeting_audio": "Ɛte sɛn! Akwaaba!",
+        # IMPORTANT: Must be a single director clause with NO periods before the colon,
+        # otherwise Gemini TTS will read the English sentences aloud as a preamble!
+        "tts_voice_prompt": "Speak in a warm, deep, native Ghanaian Asante Twi voice: ",
         "sample_questions": [
-            "Kenkan Genesis Ti Baako ma me",
-            "Kyerɛ me Awurade mpaebɔ no (Mateu 6:9-13)",
-            "Dɛn na Twerɛ Kronkron ka fa ɔdɔ ho?"
-        ]
+            "Kenkan Nnwom ti aduonu mmiɛnsa ma me",
+            "Kyerɛ me Yohane ti mmiɛnsa nkyekyɛm dunsia ase",
+            "Dɛn na Twerɛ Kronkron ka fa gyidie ne ɔdɔ ho?",
+        ],
     },
 }
 

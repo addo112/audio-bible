@@ -1,21 +1,18 @@
 """
-Conversation pipeline — the voice loop, streamed.
+Step 4: Conversation Pipeline — Connecting the Asante Twi Voice Loop.
 
-    audio ─► Twi STT ─► understand request ─┬─► READ: real Asante Twi Bible text, verse by verse
-                                            └─► ANSWER: Gemini (short, grounded in retrieved verses)
-                                                         │
-                         sentence by sentence ◄──────────┘
-                                  │
-                       native Twi TTS ─► stream to the phone (NDJSON events)
-
-Events yielded (dicts):
-    {"type": "session",    "session_id"}
-    {"type": "transcript", "text", "engine"}
-    {"type": "mode",       "mode": "read"|"answer", "title"}
-    {"type": "text",       "seq", "text"}                    # what is being said (for the screen)
-    {"type": "audio",      "seq", "audio" (base64), "mime"}  # or has_audio=False → browser voice
-    {"type": "timing",     ...seconds...}
-    {"type": "done"}
+    audio ─► Step 1: Twi STT (Whisper Akan / Gemini ASR)
+                │
+                ▼
+         Step 2: Core Knowledge Engine (Open.Bible + jdapaah/asante-twi-bible)
+                ├─► READ (Whole Chapter): Stream authentic dramatized Asante Twi Audio Bible MP3
+                │                         or cohesive native Twi TTS passages
+                └─► ANSWER (Question):    Stream Gemini grounded in Twi Scripture
+                                          ("Gyina kyerɛwsɛm yi so nkobaa bua asɛmmisa yi...")
+                                                │
+                                                ▼
+                                   Step 3: Native Ghanaian Twi TTS
+                                   (Gemini 3.8 Native Twi + Kasanoma/Nano-Twi sherpa-onnx)
 """
 from __future__ import annotations
 
@@ -35,7 +32,8 @@ from app.services.tts_service import tts_service
 logger = logging.getLogger(__name__)
 
 _SENTENCE_END = re.compile(r"[.!?;]+[\"'”’)]*\s")
-MIN_CHUNK = 20
+MIN_FIRST_CHUNK = 28
+MIN_PARAGRAPH_CHUNK = 220
 
 
 class Conversation:
@@ -45,7 +43,7 @@ class Conversation:
     # ------------------------------------------------------------------ warmup
     @staticmethod
     def warmup() -> None:
-        """Load data and models (blocking). Called in a background thread at startup."""
+        """Load Bible index, Kasanoma/Nano-Twi sherpa-onnx TTS, and Twi Whisper STT."""
         t0 = time.time()
         bible_index.load()
         tts_service.warmup()
@@ -53,24 +51,36 @@ class Conversation:
         logger.info(f"Voice loop warm in {time.time() - t0:.1f}s")
 
     # ------------------------------------------------------------------ main entry
-    async def run(self, session_id: str | None, audio: bytes | None = None, mime: str = "audio/webm",
-                  text: str | None = None) -> AsyncIterator[dict]:
+    async def run(
+        self,
+        session_id: str | None,
+        audio: bytes | None = None,
+        mime: str = "audio/webm",
+        text: str | None = None,
+    ) -> AsyncIterator[dict]:
         t0 = time.time()
         timing: dict[str, float] = {}
         sid, _ = bible_ai.get_session(session_id)
         yield {"type": "session", "session_id": sid}
 
-        # 1) Speech → text
+        # Step 1: Speech-to-Text
         if audio is not None:
             transcript, engine = await asyncio.to_thread(
-                stt_service.transcribe, audio, mime, bible_ai.client, bible_ai.primary_model)
+                stt_service.transcribe,
+                audio,
+                mime,
+                bible_ai.client,
+                bible_ai.primary_model,
+            )
             timing["stt"] = round(time.time() - t0, 2)
         else:
             transcript, engine = (text or "").strip(), "text"
         yield {"type": "transcript", "text": transcript, "engine": engine}
 
         if not transcript:
-            async for ev in self._speak_items([("Kafra, mante wo asɛm no yie. Yɛ sɛ wobɛka bio.", None)], timing, t0):
+            async for ev in self._speak_items(
+                [("Kafra, mante wo asɛm no yie. Yɛ sɛ wobɛka bio.", None)], timing, t0
+            ):
                 yield ev
             yield {"type": "done"}
             return
@@ -78,7 +88,7 @@ class Conversation:
         if not bible_index.ready:
             await asyncio.to_thread(bible_index.load)
 
-        # 2) Understand the request
+        # Step 2: Parse request & retrieve Asante Twi Scripture
         req = bible_index.parse_request(transcript)
         if req.mode == "continue":
             req.passage = self._next_chapter(sid)
@@ -90,27 +100,80 @@ class Conversation:
             if verses:
                 self._last_passage[sid] = req.passage
                 yield {"type": "mode", "mode": "read", "title": req.passage.label}
-                items = self._reading_items(req.passage, verses)
-                if not req.wants_explanation:
-                    items.append(self._closing_offer(req.passage))
-                async for ev in self._speak_items(items, timing, t0):
-                    yield ev
+
+                # Check if whole chapter(s) requested and official dramatized Asante Twi Audio Bible MP3 is available
+                used_official_mp3 = False
+                if req.passage.verse_start is None:
+                    chapter_mp3s: list[tuple[int, bytes, str]] = []
+                    for ch in range(req.passage.chapter_start, req.passage.chapter_end + 1):
+                        url = bible_index.get_chapter_audio_url(req.passage.book, ch)
+                        if url:
+                            mp3_bytes, mp3_mime = await tts_service.fetch_chapter_audio(url)
+                            if mp3_bytes and mp3_mime:
+                                chapter_mp3s.append((ch, mp3_bytes, mp3_mime))
+
+                    if len(chapter_mp3s) == (req.passage.chapter_end - req.passage.chapter_start + 1):
+                        used_official_mp3 = True
+                        # Stream all verses as readable text first
+                        display_lines = [f"📖 {req.passage.label}"]
+                        cur_ch = req.passage.chapter_start
+                        for v in verses:
+                            if v["chapter"] != cur_ch:
+                                cur_ch = v["chapter"]
+                                display_lines.append(f"— Ti {cur_ch} —")
+                            display_lines.append(f"{v['verse']}. {v['text']}")
+                        yield {"type": "text", "seq": 1, "text": "\n".join(display_lines)}
+
+                        for idx, (_ch, mp3_bytes, mp3_mime) in enumerate(chapter_mp3s, 1):
+                            if "first_audio" not in timing:
+                                timing["first_audio"] = round(time.time() - t0, 2)
+                            yield {
+                                "type": "audio",
+                                "seq": idx,
+                                "audio": base64.b64encode(mp3_bytes).decode(),
+                                "mime": mp3_mime,
+                            }
+
+                if not used_official_mp3:
+                    items = self._reading_items(req.passage, verses)
+                    if not req.wants_explanation:
+                        items.append(self._closing_offer(req.passage))
+                    async for ev in self._speak_items(items, timing, t0):
+                        yield ev
+
                 if req.wants_explanation:
-                    async for ev in self._answer(sid, transcript, verses[:40], timing, t0, after=req.passage.label):
+                    async for ev in self._answer(
+                        sid,
+                        transcript,
+                        verses[:40],
+                        timing,
+                        t0,
+                        after=req.passage.label,
+                    ):
                         yield ev
                 else:
-                    bible_ai.remember(sid, transcript, f"(Mekenkanee {req.passage.label} maa no.)")
+                    bible_ai.remember(
+                        sid, transcript, f"(Mekenkanee {req.passage.label} maa no.)"
+                    )
                 timing["total"] = round(time.time() - t0, 2)
                 yield {"type": "timing", **timing}
                 yield {"type": "done"}
                 return
 
-        # 3b) Conversational answer grounded in retrieved verses
+        # 3b) Conversational answer grounded in retrieved Open.Bible + jdapaah/asante-twi-bible verses
         context: list[dict] = []
         if req.passage:
-            context.extend(bible_index.get_passage(
-                Passage(req.passage.book, req.passage.chapter_start, req.passage.chapter_start,
-                        req.passage.verse_start, req.passage.verse_end))[:30])
+            context.extend(
+                bible_index.get_passage(
+                    Passage(
+                        req.passage.book,
+                        req.passage.chapter_start,
+                        req.passage.chapter_start,
+                        req.passage.verse_start,
+                        req.passage.verse_end,
+                    )
+                )[:30]
+            )
         seen = {(v["book"], v["chapter"], v["verse"]) for v in context}
         for v in bible_index.search(transcript, k=6):
             if (v["book"], v["chapter"], v["verse"]) not in seen:
@@ -126,14 +189,33 @@ class Conversation:
     # ------------------------------------------------------------------ reading
     @staticmethod
     def _reading_items(p: Passage, verses: list[dict]) -> list[tuple[str, str | None]]:
-        """(display text, spoken text) pairs. Verse numbers are shown, not spoken (Audio Bible style)."""
-        items: list[tuple[str, str | None]] = [(f"📖 {p.label}", p.spoken_title + ".")]
+        """
+        Group verses into natural cohesive spoken passages (~250-350 chars each)
+        so TTS speaks with continuous Ghanaian cadence instead of choppy 1-verse fragments.
+        """
+        items: list[tuple[str, str | None]] = []
+        disp_buf: list[str] = [f"📖 {p.label}"]
+        spoken_buf: list[str] = [p.spoken_title + "."]
         current_ch = p.chapter_start
+
         for v in verses:
             if v["chapter"] != current_ch:
+                if disp_buf:
+                    items.append(("\n".join(disp_buf), " ".join(spoken_buf)))
+                    disp_buf, spoken_buf = [], []
                 current_ch = v["chapter"]
-                items.append((f"— Ti {current_ch} —", f"Ti {twi_number(current_ch)}."))
-            items.append((f"{v['verse']}. {v['text']}", v["text"]))
+                disp_buf.append(f"— Ti {current_ch} —")
+                spoken_buf.append(f"Ti {twi_number(current_ch)}.")
+
+            disp_buf.append(f"{v['verse']}. {v['text']}")
+            spoken_buf.append(v["text"])
+
+            if sum(len(s) for s in spoken_buf) >= 280:
+                items.append(("\n".join(disp_buf), " ".join(spoken_buf)))
+                disp_buf, spoken_buf = [], []
+
+        if disp_buf:
+            items.append(("\n".join(disp_buf), " ".join(spoken_buf)))
         return items
 
     def _closing_offer(self, p: Passage) -> tuple[str, str | None]:
@@ -153,29 +235,44 @@ class Conversation:
         return Passage(last.book, nxt, nxt)
 
     # ------------------------------------------------------------------ answering
-    async def _answer(self, sid: str, question: str, verses: list[dict], timing: dict, t0: float,
-                      after: str | None = None) -> AsyncIterator[dict]:
+    async def _answer(
+        self,
+        sid: str,
+        question: str,
+        verses: list[dict],
+        timing: dict,
+        t0: float,
+        after: str | None = None,
+    ) -> AsyncIterator[dict]:
         queue: asyncio.Queue = asyncio.Queue()
         full: list[str] = []
 
         async def produce():
             buf = ""
+            first_emitted = False
             try:
-                async for delta in bible_ai.stream_answer(sid, question, verses, after_reading=after):
+                async for delta in bible_ai.stream_answer(
+                    sid, question, verses, after_reading=after
+                ):
                     if "first_token" not in timing:
                         timing["first_token"] = round(time.time() - t0, 2)
                     full.append(delta)
                     buf += delta
                     while True:
+                        min_len = MIN_FIRST_CHUNK if not first_emitted else MIN_PARAGRAPH_CHUNK
                         m = None
                         for mm in _SENTENCE_END.finditer(buf):
-                            if mm.end() >= MIN_CHUNK:
+                            if mm.end() >= min_len:
                                 m = mm
+                                if first_emitted:
+                                    # Keep going to the last sentence boundary in buf for cohesive paragraph prosody
+                                    continue
                                 break
                         if not m:
                             break
-                        await queue.put((buf[:m.end()].strip(), None))
-                        buf = buf[m.end():]
+                        await queue.put((buf[: m.end()].strip(), None))
+                        first_emitted = True
+                        buf = buf[m.end() :]
                 if buf.strip():
                     await queue.put((buf.strip(), None))
             finally:
@@ -200,7 +297,9 @@ class Conversation:
         async for ev in self._speak_queue(queue, timing, t0):
             yield ev
 
-    async def _speak_queue(self, queue: asyncio.Queue, timing: dict, t0: float) -> AsyncIterator[dict]:
+    async def _speak_queue(
+        self, queue: asyncio.Queue, timing: dict, t0: float
+    ) -> AsyncIterator[dict]:
         seq = 0
         while True:
             item = await queue.get()
@@ -213,9 +312,19 @@ class Conversation:
             if audio:
                 if "first_audio" not in timing:
                     timing["first_audio"] = round(time.time() - t0, 2)
-                yield {"type": "audio", "seq": seq, "audio": base64.b64encode(audio).decode(), "mime": mime}
+                yield {
+                    "type": "audio",
+                    "seq": seq,
+                    "audio": base64.b64encode(audio).decode(),
+                    "mime": mime,
+                }
             else:
-                yield {"type": "audio", "seq": seq, "has_audio": False, "text": spoken or display}
+                yield {
+                    "type": "audio",
+                    "seq": seq,
+                    "has_audio": False,
+                    "text": spoken or display,
+                }
 
 
 conversation = Conversation()

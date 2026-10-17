@@ -28,6 +28,23 @@ class Settings(BaseSettings):
     # Default TTS voice name (Gemini prebuilt voice — Charon is deep and resonant like the Audio Bible narrator)
     GEMINI_TTS_VOICE: str = "Charon"
     
+    # --- Native voice loop (local models, CPU) ---
+    # Speech-to-text: "whisper" (GhanaNLP Twi Whisper, local) or "gemini" (cloud transcription)
+    STT_ENGINE: str = "whisper"
+    WHISPER_MODEL: str = "ghananlpcommunity/whisper-large-v3-turbo-twi-ctranslate"
+    WHISPER_COMPUTE_TYPE: str = "int8"
+    
+    # Text-to-speech: "local" (native Twi VITS voice) or "gemini"
+    TTS_ENGINE: str = "local"
+    LOCAL_TTS_MODEL: str = "danieldzikunuofmarvel/mms-tts-asante-twi-bibletts"
+    LOCAL_TTS_SPEAKING_RATE: float = 1.0
+    
+    # CPU threads for local models
+    TORCH_THREADS: int = 4
+    
+    # Max tokens for short conversational answers
+    ANSWER_MAX_TOKENS: int = 400
+    
     class Config:
         env_file = ".env"
         extra = "ignore"

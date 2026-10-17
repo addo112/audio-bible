@@ -1,109 +1,49 @@
-# 📖 Audio Bible AI
+# 📖 Asante Twi Audio Bible AI
 
-**Voice-first AI Bible teaching assistant for Ghanaian languages**
+**Voice-first Asante Twi Audio Bible & conversational Bible teacher for listeners in Ghana**
 
-Listen to God's Word explained in your language — Asante Twi, Fante, Ewe, GA, and Hausa. Designed for people who cannot read or write.
+Built for people who prefer or need to hear God's Word rather than read. Speak in Asante Twi to:
+- **Have whole chapters or passages read verbatim** from the Asante Twi Bible (e.g., *"Kenkan Dwom ti aduonu mmiɛnsa"*, *"Kenkan Genesis ti 1 kɔsi 3"*, or *"Toa so"* to continue to the next chapter)
+- **Ask Bible questions in Twi** and receive short, warm, conversational answers grounded in retrieved Scripture
 
-## 🎯 Features
+## 🏗️ Voice Loop Architecture
 
-- 🎤 **Voice Input** — Speak your question in your language
-- 🧠 **AI Bible Teacher** — Expert explanations with verse references  
-- 🔊 **Audio Responses** — Hear answers in your language
-- 📱 **Mobile PWA** — Install on your phone like a native app
-- 🌍 **5 Languages** — Asante Twi, Fante, Ewe, GA, Hausa
-- ♿ **Accessibility** — No reading required, icon-driven interface
+1. **Speech-to-Text (`app/services/stt_service.py`)**
+   - Uses **Faster-Whisper** (`int8` on CPU) with GhanaNLP's fine-tuned Akan/Twi model (`ghananlpcommunity/whisper-large-v3-turbo-twi-ctranslate`), falling back to Gemini transcription if needed.
+2. **Asante Twi Bible Knowledge Base (`app/services/bible_index.py`)**
+   - 30,565 verses across all 66 books (`data/bible_tw.jsonl`), built from the verse-split Open.Bible Asante Twi corpus (`davidguzmanr/open-bible-resources` → `Twi (Asante)`).
+   - Understands spoken Twi and English book names and Twi number words (*"Dwom ti aduonu mmiɛnsa"*, *"Yohane 3:16"*).
+   - **Read mode:** streams the exact Bible verses directly without waiting for the LLM.
+   - **Answer mode:** retrieves matching Twi verses via BM25 and streams a short (2–5 sentence) conversational answer from Google Gemini (`google-genai`).
+3. **Native Twi Text-to-Speech (`app/services/local_tts.py`)**
+   - Synthesizes each sentence as soon as it is ready using a VITS voice trained on Ghanaian Asante Twi speakers (`danieldzikunuofmarvel/mms-tts-asante-twi-bibletts` or `ghananlpcommunity/tekyerema-tts-twi`), running locally on CPU.
+4. **Streaming Phone PWA (`static/js/app.js` + `POST /api/converse`)**
+   - Streams NDJSON events (`transcript`, `text`, `audio`) so the phone plays the first sentence while the rest is still being generated.
 
-## 🚀 Quick Start
+## 🚀 Running Locally
 
-### 1. Get a Free Gemini API Key
-Visit [aistudio.google.com](https://aistudio.google.com/) and create a free API key.
+```powershell
+# 1. Build the Asante Twi Bible index (one-time, downloads text columns only)
+C:\Users\user\.venvs\audio-bible\Scripts\python.exe scripts\build_bible_index.py
 
-### 2. Setup
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd audio-bible
-
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Mac/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env file
-copy .env.example .env
-# Edit .env and add your GEMINI_API_KEY
+# 2. Start the server
+C:\Users\user\.venvs\audio-bible\Scripts\python.exe main.py
 ```
 
-### 3. Run Locally
-```bash
-python main.py
-# Or: uvicorn main:app --reload --port 8000
+Open **http://localhost:8000** in your browser (or on a phone on the same Wi-Fi).
+
+### Choosing the Twi Voice
+Generate comparison samples of the 3 local Twi voices:
+```powershell
+C:\Users\user\.venvs\audio-bible\Scripts\python.exe scripts\voice_samples.py
 ```
+Listen to `samples/A_bibletts.wav`, `samples/B_tekyerema.wav`, and `samples/C_mms_base.wav`. To switch voices, set `LOCAL_TTS_MODEL` in `.env`:
+- `LOCAL_TTS_MODEL=danieldzikunuofmarvel/mms-tts-asante-twi-bibletts` (default)
+- `LOCAL_TTS_MODEL=ghananlpcommunity/tekyerema-tts-twi`
+- `LOCAL_TTS_MODEL=facebook/mms-tts-aka`
 
-Open http://localhost:8000 on your phone or browser.
+## 📜 Credits & Licences
 
-### 4. Deploy to Render (Free)
-
-1. Push code to a GitHub repository
-2. Go to [render.com](https://render.com/) and sign up
-3. Click **New → Web Service**
-4. Connect your GitHub repo
-5. Settings:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-6. Add Environment Variables:
-   - `GEMINI_API_KEY` = your Gemini key
-   - `KHAYA_API_KEY` = (optional) your Khaya key
-7. Click **Deploy**
-
-Your app will be live at `https://your-app-name.onrender.com`
-
-## 🏗️ Architecture
-
-```
-User speaks (Twi/Fante/Ewe/GA/Hausa)
-    → Browser records audio
-    → FastAPI backend
-    → Google Gemini AI (understands audio + responds as Bible teacher)
-    → Text-to-Speech (Khaya AI / gTTS / Browser TTS)
-    → User hears Bible teaching in their language
-```
-
-## 📁 Project Structure
-
-```
-audio-bible/
-├── main.py                    # FastAPI entry point
-├── app/
-│   ├── config.py              # Language & API configuration
-│   ├── services/
-│   │   ├── bible_ai.py        # Gemini Bible teacher AI
-│   │   └── tts_service.py     # Text-to-Speech (multi-fallback)
-│   └── routes/
-│       └── api.py             # REST API endpoints
-├── static/
-│   ├── index.html             # Main UI (voice-first SPA)
-│   ├── manifest.json          # PWA manifest
-│   ├── sw.js                  # Service worker
-│   ├── css/style.css          # Mobile-first styles
-│   ├── js/app.js              # Frontend logic
-│   └── icons/                 # App icons
-├── requirements.txt
-├── Dockerfile
-├── render.yaml
-└── .env.example
-```
-
-## 🔑 API Keys
-
-| Service | Purpose | Cost | Required? |
-|---------|---------|------|-----------|
-| Google Gemini | AI Bible teacher + audio understanding | Free tier | ✅ Yes |
-| Khaya AI | High-quality Ghanaian TTS | 100 free calls/month | ❌ Optional |
-
-## 📜 License
-
-Built with ❤️ for the people of Ghana and West Africa.
+- **Asante Twi Bible Text:** [Biblica Open.Bible Asante Twi](https://open.bible/) via [`davidguzmanr/open-bible-resources`](https://huggingface.co/datasets/davidguzmanr/open-bible-resources) and [`coqui-ai/open-bible-scripts`](https://github.com/coqui-ai/open-bible-scripts) — licensed under **CC BY-SA 4.0**.
+- **Twi Speech Recognition (Whisper):** [`ghananlpcommunity/whisper-large-v3-turbo-twi-ctranslate`](https://huggingface.co/ghananlpcommunity/whisper-large-v3-turbo-twi-ctranslate) (converted from `katrintomanek/whisper-large-v3-turbo_Akan_standardspeech_specaugment`) — licensed under **CC BY-SA 4.0**.
+- **Native Twi Voices (VITS / MMS):** [`danieldzikunuofmarvel/mms-tts-asante-twi-bibletts`](https://huggingface.co/danieldzikunuofmarvel/mms-tts-asante-twi-bibletts), [`ghananlpcommunity/tekyerema-tts-twi`](https://huggingface.co/ghananlpcommunity/tekyerema-tts-twi), and [`facebook/mms-tts-aka`](https://huggingface.co/facebook/mms-tts-aka) — licensed under **CC BY-NC 4.0** (non-commercial research, educational, and ministry use).

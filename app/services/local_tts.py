@@ -263,37 +263,35 @@ def split_sentences(text: str, max_len: int = 200) -> list[str]:
     return out
 
 
-def split_clauses(text: str, max_clause_len: int = 140) -> list[tuple[str, float]]:
+def split_clauses(text: str, max_clause_len: int = 165) -> list[tuple[str, float]]:
     """
-    Split prepared Asante Twi text into natural breath/clause groups with tailored
-    liturgical pauses:
-    - Sentence/verse endings (. ! ? ; :) -> 0.27s pause
-    - Comma clause boundaries (when clause >= 16 chars) -> 0.12s breath pause
+    Split prepared Asante Twi text into complete sentence breath-groups so VITS
+    preserves natural Akan tonal downdrift (terracing) across each sentence:
+    - Sentence/verse endings (. ! ? ;) -> 0.26s liturgical pause
+    - Colon introductions (:) -> 0.16s pause
+    - Long sentences (> max_clause_len) split at the nearest comma (,) -> 0.12s pause
     """
-    sentences = split_sentences(text, max_len=max_clause_len * 2)
+    raw_parts = [
+        p.strip()
+        for p in re.split(r"(?<=[.!?;:])\s+|\n+", text)
+        if p.strip()
+    ]
     clauses: list[tuple[str, float]] = []
-    for sent in sentences:
-        # Split on commas to give natural Ghanaian orator breath phrasing
-        comma_parts = [p.strip() for p in sent.split(",") if p.strip()]
-        if len(comma_parts) <= 1:
-            clauses.append((sent, 0.27))
-            continue
-
-        buf = ""
-        for idx, part in enumerate(comma_parts):
-            is_last = idx == len(comma_parts) - 1
-            candidate = f"{buf}, {part}".strip(", ") if buf else part
-            if not is_last and len(candidate) < 16:
-                buf = candidate
-                continue
-            if is_last:
-                clauses.append((candidate, 0.27))
-                buf = ""
+    for part in raw_parts:
+        end_pause = 0.16 if part.endswith(":") else 0.26
+        while len(part) > max_clause_len:
+            cut = part.rfind(",", 0, max_clause_len)
+            if cut > max_clause_len // 3:
+                clauses.append((part[: cut + 1].strip(), 0.12))
+                part = part[cut + 1 :].strip()
             else:
-                clauses.append((candidate + ",", 0.12))
-                buf = ""
-        if buf:
-            clauses.append((buf, 0.27))
+                cut = part.rfind(" ", 0, max_clause_len)
+                if cut <= 0:
+                    break
+                clauses.append((part[:cut].strip(), 0.10))
+                part = part[cut + 1 :].strip()
+        if part:
+            clauses.append((part, end_pause))
     return clauses
 
 

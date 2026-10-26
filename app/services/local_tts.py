@@ -42,38 +42,184 @@ KASANOMA_URL = "https://github.com/michsethowusu/kasanoma/releases/download/v1/k
 BIBLETTS_REPO = "danieldzikunuofmarvel/mms-tts-asante-twi-bibletts"
 
 _CHAR_MAP = {
-    "\u2018": "'",
-    "\u2019": "'",
     "\u201c": "",
     "\u201d": "",
     '"': "",
-    "\u2013": "-",
-    "\u2014": "-",
+    "\u2013": " ",
+    "\u2014": ", ",
+    "-": " ",
     "\u00a0": " ",
     "\u2026": ".",
+    "ↄ": "ɔ",
+    "Ↄ": "Ɔ",
 }
+
+# Spoken Asante Twi equivalents for English/Biblical names and loanwords
+_TWI_WORD_PHONETICS: dict[str, str] = {
+    "genesis": "gyenesis",
+    "exodus": "eksodos",
+    "leviticus": "lewitikos",
+    "numbers": "numeri",
+    "deuteronomy": "deuteronomium",
+    "joshua": "yosua",
+    "judges": "atemmufoɔ",
+    "ruth": "rut",
+    "chronicles": "berɛsosɛm",
+    "ezra": "esra",
+    "nehemiah": "nehemia",
+    "esther": "ester",
+    "job": "hiob",
+    "psalms": "nnwom",
+    "psalm": "dwom",
+    "proverbs": "mmebusɛm",
+    "ecclesiastes": "ɔsɛnkafoɔ",
+    "isaiah": "yesaia",
+    "jeremiah": "yeremia",
+    "lamentations": "kwadwom",
+    "ezekiel": "hesekiel",
+    "obadiah": "obadia",
+    "jonah": "yona",
+    "micah": "mika",
+    "habakkuk": "habakuk",
+    "zephaniah": "sefania",
+    "haggai": "hagai",
+    "zechariah": "sakaria",
+    "malachi": "malaki",
+    "matthew": "mateo",
+    "mark": "marko",
+    "luke": "luka",
+    "john": "yohane",
+    "acts": "asomafoɔ nnwuma",
+    "romans": "romafoɔ",
+    "corinthians": "korintofoɔ",
+    "corinth": "korinto",
+    "galatians": "galatifoɔ",
+    "ephesians": "efesofoɔ",
+    "ephesus": "efeso",
+    "philippians": "filipifoɔ",
+    "philippi": "filipi",
+    "colossians": "kolosefoɔ",
+    "thessalonians": "tesalonikafoɔ",
+    "timothy": "timoteo",
+    "titus": "tito",
+    "philemon": "filemon",
+    "hebrews": "hebrifoɔ",
+    "hebrew": "hebri",
+    "james": "yakobo",
+    "peter": "petro",
+    "jude": "yuda",
+    "judah": "yuda",
+    "judas": "yuda",
+    "revelation": "adiyisɛm",
+    "revelations": "adiyisɛm",
+    "jesus": "yesu",
+    "christ": "kristo",
+    "jehovah": "yehowa",
+    "yahweh": "yehowa",
+    "david": "dawid",
+    "moses": "mose",
+    "jacob": "yakob",
+    "joseph": "yosef",
+    "isaac": "isak",
+    "solomon": "salomo",
+    "elijah": "eliya",
+    "elisha": "elisa",
+    "jerusalem": "yerusalem",
+    "zion": "sion",
+    "egypt": "misraim",
+    "babylon": "babilonia",
+    "galilee": "galilea",
+    "nazareth": "nasaret",
+    "bethlehem": "betlehem",
+    "jordan": "yordan",
+    "pharaoh": "farao",
+    "paul": "paulo",
+    "barnabas": "barnaba",
+    "stephen": "stefano",
+    "mary": "maria",
+    "martha": "marta",
+    "lazarus": "lasaro",
+    "bible": "twerɛ kronkron",
+    "chapter": "eti",
+    "verse": "emu",
+    "pastor": "ɔsɔfoɔ",
+}
+
+_WORD_PHONETICS_RE = re.compile(
+    r"\b(" + "|".join(sorted(_TWI_WORD_PHONETICS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_combining_keep_akan(text: str) -> str:
+    """
+    Strip combining diacritics (turning ã -> a, õ -> o, á -> a, ɛ́ -> ɛ, ɔ́ -> ɔ)
+    so nasalized or tone-marked Twi vowels are never dropped or routed to untrained tokens,
+    while preserving Akan open vowels (ɛ, ɔ) and elision apostrophe (ʼ).
+    """
+    nfd = unicodedata.normalize("NFD", text)
+    return "".join(c for c in nfd if not unicodedata.combining(c))
+
+
+def normalize_twi_phonetics(text: str) -> str:
+    """
+    Map English/Biblical names and any non-Akan Latin consonants (c, j, q, v, x, z)
+    into pure Asante Twi orthographic phonetics so every syllable is pronounced with
+    authentic Ghanaian phonology.
+    """
+    t = _WORD_PHONETICS_RE.sub(
+        lambda m: _TWI_WORD_PHONETICS[m.group(0).lower()], text
+    )
+    # Map non-Akan consonant digraphs & letters to Akan phonetic equivalents
+    t = re.sub(r"ch", "ky", t, flags=re.IGNORECASE)
+    t = re.sub(r"sh", "hy", t, flags=re.IGNORECASE)
+    t = re.sub(r"ph", "f", t, flags=re.IGNORECASE)
+    t = re.sub(r"th", "t", t, flags=re.IGNORECASE)
+    t = re.sub(r"qu", "kw", t, flags=re.IGNORECASE)
+    t = re.sub(r"c(?=[eiyɛEIYƐ])", "s", t)
+    t = re.sub(r"[cC]", "k", t)
+    t = re.sub(r"[jJ]", "gy", t)
+    t = re.sub(r"[vV]", "w", t)
+    t = re.sub(r"[xX]", "ks", t)
+    t = re.sub(r"[zZ]", "s", t)
+    t = re.sub(r"[qQ]", "k", t)
+    return t
 
 
 def prepare_for_speech(text: str) -> str:
     """
     Normalize Asante Twi text for natural Ghanaian liturgical pronunciation:
-    - Strip markdown, brackets, and emojis
+    - Strip USFM cross-references, inline footnotes, markdown, brackets, and emojis
+    - Strip duplicate parenthetical numerals like '(228)' after spoken Twi numbers
+    - Preserve intra-word Asante Twi elisions (nʼasɛm, wʼakoma, mʼagya) with U+02BC 'ʼ'
     - Convert Bible verse citations (e.g. 3:16 -> eti mmiɛnsa, emu dunsia)
     - Convert verse ranges (e.g. 1-31 -> firi emu baako de kɔsi aduasa baako)
     - Convert digits to spoken Asante Twi number words
-    - Normalize curly apostrophes and glottal stops (ʼ / ’ -> ')
+    - Normalize nasalized/toned vowels (ã -> a, õ -> o, á -> a) and non-Akan consonants
     """
     t = _EMOJI.sub("", text)
-    t = re.sub(r"[#*_>`\[\]]", "", t)
+    # Strip USFM cross-reference tags (\+xt ... \+xt*) and inline USFM footnotes (+ ch.v Note.)
+    t = re.sub(r"\(\\\+xt\s+[^)]*\\\+xt\*\)", "", t)
+    t = re.sub(r"\\\+[a-z]+\*?", "", t)
+    t = re.sub(r"\s*\+\s*\d+\.\d+\s+[^.]+\.(?:\u201d|\")?", "", t)
+    # Strip parenthetical duplicate numerals e.g. "ahanu aduonu nwɔtwe (228)"
+    t = re.sub(r"\(\s*\d[\d,.\s]*\)", "", t)
+    t = re.sub(r"[#*_>`\[\]()~]", "", t)
     t = (
         t.replace("—", ", ")
         .replace("–", "-")
         .replace("“", "")
         .replace("”", "")
         .replace('"', "")
-        .replace("ʼ", "'")
-        .replace("’", "'")
+        .replace("ↄ", "ɔ")
+        .replace("Ↄ", "Ɔ")
     )
+    # Preserve intra-word Asante Twi elisions (e.g. n'asɛm, w’akoma, m'agya -> nʼasɛm)
+    # using U+02BC 'ʼ' (token ID 1 in BibleTTS VITS, trained on 8,479 elisions)
+    t = re.sub(r"(?<=[A-Za-zɛɔƐƆ])['’‘ʼ](?=[A-Za-zɛɔƐƆ])", "ʼ", t)
+    # Remove any remaining standalone single quotes so untrained ASCII "'" token is never used
+    t = re.sub(r"['’‘]", "", t)
+
     # Chapter:Verse-Verse (e.g. 1:1-31 -> eti baako, firi emu baako de kɔsi aduasa baako)
     t = re.sub(
         r"(\d+)\s*:\s*(\d+)\s*-\s*(\d+)",
@@ -95,10 +241,12 @@ def prepare_for_speech(text: str) -> str:
         t,
     )
     t = re.sub(r"\d+", lambda m: twi_number(int(m.group(0))), t)
+    t = _strip_combining_keep_akan(t)
+    t = normalize_twi_phonetics(t)
     return re.sub(r"\s+", " ", t).strip()
 
 
-def split_sentences(text: str, max_len: int = 220) -> list[str]:
+def split_sentences(text: str, max_len: int = 200) -> list[str]:
     """Split into speakable sentences at punctuation, then at commas if still long."""
     parts = [p.strip() for p in re.split(r"(?<=[.!?;:])\s+|\n+", text) if p.strip()]
     out: list[str] = []
@@ -113,6 +261,40 @@ def split_sentences(text: str, max_len: int = 220) -> list[str]:
         if p:
             out.append(p)
     return out
+
+
+def split_clauses(text: str, max_clause_len: int = 140) -> list[tuple[str, float]]:
+    """
+    Split prepared Asante Twi text into natural breath/clause groups with tailored
+    liturgical pauses:
+    - Sentence/verse endings (. ! ? ; :) -> 0.27s pause
+    - Comma clause boundaries (when clause >= 16 chars) -> 0.12s breath pause
+    """
+    sentences = split_sentences(text, max_len=max_clause_len * 2)
+    clauses: list[tuple[str, float]] = []
+    for sent in sentences:
+        # Split on commas to give natural Ghanaian orator breath phrasing
+        comma_parts = [p.strip() for p in sent.split(",") if p.strip()]
+        if len(comma_parts) <= 1:
+            clauses.append((sent, 0.27))
+            continue
+
+        buf = ""
+        for idx, part in enumerate(comma_parts):
+            is_last = idx == len(comma_parts) - 1
+            candidate = f"{buf}, {part}".strip(", ") if buf else part
+            if not is_last and len(candidate) < 16:
+                buf = candidate
+                continue
+            if is_last:
+                clauses.append((candidate, 0.27))
+                buf = ""
+            else:
+                clauses.append((candidate + ",", 0.12))
+                buf = ""
+        if buf:
+            clauses.append((buf, 0.27))
+    return clauses
 
 
 def _encode_onnx_metadata(meta: dict[str, str]) -> bytes:

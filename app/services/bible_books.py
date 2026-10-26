@@ -11,11 +11,11 @@ import unicodedata
 
 # (English name, Twi display name, extra aliases, number of chapters)
 _RAW_BOOKS = [
-    ("Genesis", "Genesis", ["mfitiase", "mfitiasee", "gen"], 50),
-    ("Exodus", "Exodus", ["eksodus", "exo", "ex"], 40),
-    ("Leviticus", "Leviticus", ["lev", "lefitiko"], 27),
-    ("Numbers", "Numeri", ["nnipakan"], 36),
-    ("Deuteronomy", "Deuteronomium", ["deut", "deuteronomio", "mmara a ɛtɔ so mmienu"], 34),
+    ("Genesis", "Genesis", ["gyenesis", "mfitiase", "mfitiasee", "gen", "1 mose"], 50),
+    ("Exodus", "Eksodos", ["exodus", "eksodus", "exo", "ex", "2 mose"], 40),
+    ("Leviticus", "Lewitikos", ["leviticus", "lev", "lefitiko", "lewitiko", "3 mose"], 27),
+    ("Numbers", "Numeri", ["nnipakan", "4 mose"], 36),
+    ("Deuteronomy", "Deuteronomium", ["deut", "deuteronomio", "mmara a ɛtɔ so mmienu", "5 mose"], 34),
     ("Joshua", "Yosua", ["josh", "yoswa"], 24),
     ("Judges", "Atemmufoɔ", ["atemmufo", "judg", "atemmufoo"], 21),
     ("Ruth", "Rut", ["rute"], 4),
@@ -223,9 +223,9 @@ def twi_number(n: int) -> str:
 
 # Classical liturgical introductions for the Pentateuch & major books (matching Open.Bible / BSG Audio Bible lector)
 _LITURGICAL_TITLES = {
-    0: "Mose nhoma a edi kan, Genesis",
-    1: "Mose nhoma a ɛtɔ so mmienu, Exodus",
-    2: "Mose nhoma a ɛtɔ so mmiɛnsa, Leviticus",
+    0: "Mose nhoma a edi kan, Gyenesis",
+    1: "Mose nhoma a ɛtɔ so mmienu, Eksodos",
+    2: "Mose nhoma a ɛtɔ so mmiɛnsa, Lewitikos",
     3: "Mose nhoma a ɛtɔ so nnan, Numeri",
     4: "Mose nhoma a ɛtɔ so nnum, Deuteronomium",
 }

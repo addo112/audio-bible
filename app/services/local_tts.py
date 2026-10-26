@@ -438,11 +438,21 @@ class LocalTTS:
                         else BIBLETTS_REPO
                     )
                     torch.set_num_threads(self.threads)
-                    self._vits_tok = VitsTokenizer.from_pretrained(hf_id, normalize=False)
+                    try:
+                        self._vits_tok = VitsTokenizer.from_pretrained(
+                            hf_id, normalize=False, local_files_only=True
+                        )
+                        self._vits_model = VitsModel.from_pretrained(
+                            hf_id, local_files_only=True
+                        ).eval()
+                    except Exception:
+                        self._vits_tok = VitsTokenizer.from_pretrained(
+                            hf_id, normalize=False
+                        )
+                        self._vits_model = VitsModel.from_pretrained(hf_id).eval()
                     # Exclude the 5 untrained outlier token embeddings (-, ', 2, 3, á)
                     # while keeping all 31 trained Akan letters, punctuation, and 'ʼ' (U+02BC)
                     self._vits_vocab = set(self._vits_tok.encoder) - {"-", "'", "2", "3", "á"}
-                    self._vits_model = VitsModel.from_pretrained(hf_id).eval()
                     self._vits_model.speaking_rate = self.speed
                     # Stabilize Akan tonal vowel length & vocal fold periodicity
                     self._vits_model.noise_scale = 0.42

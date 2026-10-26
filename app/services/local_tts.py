@@ -404,9 +404,10 @@ class LocalTTS:
     def _clean_for_vits(self, text: str) -> str:
         """
         Clean and normalize Asante Twi text for `mms-tts-asante-twi-bibletts`:
-        1. Expand numbers & references into Asante Twi words (`prepare_for_speech`)
-        2. NFC normalize + map curly punctuation + lowercase (critical for VitsTokenizer!)
-        3. Filter characters to `self._vits_vocab` (`set(tok.encoder)`)
+        1. Expand numbers, references, nasal/toned vowels & loanwords (`prepare_for_speech`)
+        2. NFC normalize + map punctuation + lowercase
+        3. Filter characters to trained VITS tokens (excluding untrained outlier embeddings
+           like '-', ASCII "'", '2', '3', 'á' while preserving trained 'ʼ' U+02BC!)
         """
         t = prepare_for_speech(text)
         t = unicodedata.normalize("NFC", t)
@@ -440,14 +441,19 @@ class LocalTTS:
                     )
                     torch.set_num_threads(self.threads)
                     self._vits_tok = VitsTokenizer.from_pretrained(hf_id, normalize=False)
-                    self._vits_vocab = set(self._vits_tok.encoder)
+                    # Exclude the 5 untrained outlier token embeddings (-, ', 2, 3, á)
+                    # while keeping all 31 trained Akan letters, punctuation, and 'ʼ' (U+02BC)
+                    self._vits_vocab = set(self._vits_tok.encoder) - {"-", "'", "2", "3", "á"}
                     self._vits_model = VitsModel.from_pretrained(hf_id).eval()
                     self._vits_model.speaking_rate = self.speed
+                    # Stabilize Akan tonal vowel length & vocal fold periodicity
+                    self._vits_model.noise_scale = 0.42
+                    self._vits_model.noise_scale_duration = 0.50
                     self._torch = torch
                     self.sampling_rate = self._vits_model.config.sampling_rate
                     logger.info(
                         f"Asante Twi BibleTTS narrator loaded ({hf_id}, {self.sampling_rate}Hz, "
-                        f"speaking_rate={self.speed}) in {time.time() - t0:.1f}s"
+                        f"speaking_rate={self.speed}, noise_scale=0.42, duration_noise=0.50) in {time.time() - t0:.1f}s"
                     )
                     return True
                 except Exception as e:
@@ -471,8 +477,8 @@ class LocalTTS:
                                     lexicon="",
                                     tokens=tokens_path,
                                     data_dir=espeak_dir,
-                                    noise_scale=0.667,
-                                    noise_scale_w=0.8,
+                                    noise_scale=0.50,
+                                    noise_scale_w=0.60,
                                     length_scale=1.02,
                                 ),
                                 num_threads=self.threads,
@@ -500,7 +506,7 @@ class LocalTTS:
                                     lexicon="",
                                     tokens=os.path.join(nano_dir, "tokens.txt"),
                                     data_dir=espeak_dir,
-                                    noise_scale=0.667,
+                                    noise_scale=0.55,
                                     length_scale=1.0,
                                 ),
                                 num_threads=self.threads,
@@ -521,7 +527,7 @@ class LocalTTS:
                 return False
 
     def synthesize_pcm(self, text: str) -> bytes | None:
-        """Synthesize one sentence -> raw 16-bit PCM bytes (mono)."""
+        """Synthesize one clause/sentence -> raw 16-bit PCM bytes (mono) with smooth cosine envelope."""
         if not self.load():
             return None
 
@@ -535,8 +541,37 @@ class LocalTTS:
                 inputs = self._vits_tok(clean, return_tensors="pt")
                 if inputs["input_ids"].shape[-1] < 2:
                     return None
+                self._torch.manual_seed(42)
                 with self._torch.inference_mode():
                     wav = self._vits_model(**inputs).waveform[0].detach().numpy()
+
+                # Trim leading/trailing near-silence so inter-clause breath pauses are exact
+                non_silent = np.flatnonzero(np.abs(wav) > 0.004)
+                if len(non_silent) > 0:
+                    pad_head = min(int(self.sampling_rate * 0.015), int(non_silent[0]))
+                    pad_tail = min(
+                        int(self.sampling_rate * 0.025),
+                        len(wav) - 1 - int(non_silent[-1]),
+                    )
+                    wav = wav[
+                        int(non_silent[0]) - pad_head : int(non_silent[-1]) + 1 + pad_tail
+                    ]
+
+                # Gentle peak normalization for consistent warm narrator presence
+                peak = float(np.max(np.abs(wav))) if len(wav) > 0 else 0.0
+                if peak > 0.02:
+                    wav = wav * (0.90 / max(peak, 0.25))
+
+                # 8ms fade-in and 12ms fade-out raised-cosine window to prevent boundary clicks
+                fade_in = min(int(self.sampling_rate * 0.008), len(wav) // 4)
+                fade_out = min(int(self.sampling_rate * 0.012), len(wav) // 4)
+                if fade_in > 1:
+                    wav[:fade_in] *= 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, fade_in)))
+                if fade_out > 1:
+                    wav[-fade_out:] *= 0.5 * (
+                        1.0 + np.cos(np.linspace(0.0, np.pi, fade_out))
+                    )
+
                 return (np.clip(wav, -1, 1) * 32767).astype(np.int16).tobytes()
 
             if self._sherpa_tts is not None:
@@ -559,15 +594,17 @@ class LocalTTS:
         return None
 
     def synthesize(self, text: str, pause_s: float = 0.26) -> tuple[bytes | None, str | None]:
-        """Synthesize any length of Asante Twi text -> WAV bytes with solemn liturgical pauses."""
-        chunks = split_sentences(prepare_for_speech(text))
-        if not chunks:
+        """Synthesize any length of Asante Twi text -> WAV bytes with natural clause & sentence pauses."""
+        clauses = split_clauses(prepare_for_speech(text))
+        if not clauses:
             return None, None
+        scale = pause_s / 0.26 if pause_s > 0 else 1.0
         pcm = b""
-        for c in chunks:
-            part = self.synthesize_pcm(c)
+        for idx, (clause_text, base_pause) in enumerate(clauses):
+            part = self.synthesize_pcm(clause_text)
             if part:
-                silence = b"\x00\x00" * int(self.sampling_rate * pause_s)
+                actual_pause = base_pause * scale if idx < len(clauses) - 1 else 0.08
+                silence = b"\x00\x00" * int(self.sampling_rate * actual_pause)
                 pcm += part + silence
         if not pcm:
             return None, None
